@@ -40,6 +40,55 @@ CSW_TYPES = ['Double', 'Triple', 'Quad']
 # ============================================================================
 
 @st.cache_data
+def load_weather_data():
+    """Load weather data from CSV file"""
+    try:
+        df = pd.read_csv('weather_information.csv')
+        df['State'] = df['State'].replace('Aklaska', 'Alaska')
+        
+        weather_dict = {}
+        for _, row in df.iterrows():
+            state = row['State']
+            city = row['Cities']
+            hdd = row['Heating Degree Days (HDD)']
+            cdd = row['Cooling Degree Days (CDD)']
+            
+            if state not in weather_dict:
+                weather_dict[state] = {}
+            
+            weather_dict[state][city] = {'HDD': hdd, 'CDD': cdd}
+        
+        return weather_dict
+    except FileNotFoundError:
+        st.error("⚠️ Weather data file not found")
+        return {}
+
+@st.cache_data
+def load_savings_lookup():
+    """Load savings lookup table from CSV"""
+    try:
+        df = pd.read_csv('savings_lookup.csv')
+        return df
+    except FileNotFoundError:
+        st.error("⚠️ Savings lookup file not found")
+        return pd.DataFrame()
+
+# Load data
+WEATHER_DATA_BY_STATE = load_weather_data()
+SAVINGS_LOOKUP = load_savings_lookup()
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def calculate_wwr(csw_area, building_area, num_floors):
+    """Excel F28: F27/((F18/F19)^0.5*4*15*F19)"""
+    if num_floors == 0 or building_area == 0:
+        return 0
+    floor_area = building_area / num_floors
+    wall_area = (floor_area ** 0.5) * 4 * 15 * num_floors
+    return csw_area / wall_area if wall_area > 0 else 0
+
 def build_lookup_key(inputs, hours):
     """
     Build the lookup key string matching Excel's concatenation logic
@@ -48,13 +97,13 @@ def build_lookup_key(inputs, hours):
     # Base window type (K24)
     if inputs['existing_window'] == 'Single pane':
         base = 'Single'
-    else:  # Double pane or Double pane, low-e
+    else:
         base = 'Double'
     
     # CSW type (L24)
     csw_type = inputs['csw_type']
     
-    # Size (M24) - Large if building > 30k SF AND Built-up VAV, else Mid
+    # Size (M24)
     if inputs['building_area'] > 30000 and inputs['hvac_system'] == 'Built-up VAV with hydronic reheat':
         size = 'Large'
     else:
@@ -68,12 +117,12 @@ def build_lookup_key(inputs, hours):
     if size == 'Mid':
         if heating_fuel in ['Electric', 'None']:
             hvac_type = 'PVAV_Elec'
-        else:  # Natural Gas
+        else:
             hvac_type = 'PVAV_Gas'
-    else:  # Large
+    else:
         hvac_type = 'VAV'
     
-    # Fuel type (P24) - if None, use Electric
+    # Fuel type (P24)
     fuel = 'Electric' if heating_fuel == 'None' else heating_fuel
     
     # Combine all parts
@@ -99,10 +148,7 @@ def get_savings_from_lookup(lookup_key):
     }
 
 def interpolate_hours(operating_hours, val_8760, val_2080_or_2912, q24, q25):
-    """
-    Excel interpolation formula
-    Interpolates between two values based on operating hours
-    """
+    """Excel interpolation formula"""
     if operating_hours < 2080:
         return val_2080_or_2912
     elif operating_hours >= 8760:
@@ -111,9 +157,7 @@ def interpolate_hours(operating_hours, val_8760, val_2080_or_2912, q24, q25):
         return ((operating_hours - q25) / (q24 - q25)) * (val_8760 - val_2080_or_2912) + val_2080_or_2912
 
 def calculate_q24_q25(operating_hours):
-    """
-    Q24/Q25 calculation - determines which hours to interpolate between
-    """
+    """Q24/Q25 calculation"""
     if operating_hours > 2912:
         q24 = 8760
         q25 = 2912
@@ -123,9 +167,7 @@ def calculate_q24_q25(operating_hours):
     return q24, q25
 
 def calculate_savings(inputs):
-    """
-    Main calculation function - matches Excel logic exactly
-    """
+    """Main calculation function"""
     building_area = inputs['building_area']
     csw_area = inputs['csw_area']
     operating_hours = inputs['operating_hours']
@@ -141,14 +183,14 @@ def calculate_savings(inputs):
     hdd = weather['HDD']
     cdd = weather['CDD']
     
-    # Determine interpolation points (Q24, Q25)
+    # Determine interpolation points
     q24, q25 = calculate_q24_q25(operating_hours)
     
-    # Build lookup keys for both hour thresholds
-    key_high = build_lookup_key(inputs, q24)  # 8760 or 2912
-    key_low = build_lookup_key(inputs, q25)   # 2912 or 2080
+    # Build lookup keys
+    key_high = build_lookup_key(inputs, q24)
+    key_low = build_lookup_key(inputs, q25)
     
-    # Get savings values from lookup table
+    # Get savings values
     values_high = get_savings_from_lookup(key_high)
     values_low = get_savings_from_lookup(key_low)
     
@@ -156,31 +198,31 @@ def calculate_savings(inputs):
         st.error(f"⚠️ Lookup keys not found: {key_high} or {key_low}")
         return None
     
-    # Interpolate heating savings (C31)
+    # Interpolate heating savings
     s_high = values_high['heating_kwh']
     s_low = values_low['heating_kwh']
     c31 = interpolate_hours(operating_hours, s_high, s_low, q24, q25)
     
-    # Interpolate cooling savings (C32 base, before W24 multiplier)
+    # Interpolate cooling savings
     t_high = values_high['cooling_kwh']
     t_low = values_low['cooling_kwh']
     c32_base = interpolate_hours(operating_hours, t_high, t_low, q24, q25)
     
-    # Apply cooling multiplier W24 (1 if cooling installed, else 0)
+    # Apply cooling multiplier
     w24 = 1.0 if cooling_installed == "Yes" else 0.0
     c32 = c32_base * w24
     
-    # Interpolate gas savings (C33)
+    # Interpolate gas savings
     u_high = values_high['gas_therms']
     u_low = values_low['gas_therms']
     c33 = interpolate_hours(operating_hours, u_high, u_low, q24, q25)
     
-    # Interpolate baseline EUI (V24/V25)
+    # Interpolate baseline EUI
     v_high = values_high['baseline_eui']
     v_low = values_low['baseline_eui']
     baseline_eui = interpolate_hours(operating_hours, v_high, v_low, q24, q25)
     
-    # Calculate total energy savings (F31, F33)
+    # Calculate total energy savings
     electric_savings_kwh = (c31 + c32) * csw_area
     gas_savings_therms = c33 * csw_area
     
@@ -189,10 +231,10 @@ def calculate_savings(inputs):
     gas_cost_savings = gas_savings_therms * gas_rate
     total_cost_savings = electric_cost_savings + gas_cost_savings
     
-    # Calculate savings intensity (F35) in kBtu/SF-yr
+    # Calculate savings intensity
     total_savings_kbtu_sf = (electric_savings_kwh * 3.413 + gas_savings_therms * 100) / building_area
     
-    # Calculate EUI savings percentage (F14)
+    # Calculate EUI savings percentage
     new_eui = baseline_eui - total_savings_kbtu_sf
     percent_eui_savings = (total_savings_kbtu_sf / baseline_eui * 100) if baseline_eui > 0 else 0
     
@@ -225,13 +267,13 @@ st.title('🏢 Commercial Window Savings Calculator')
 st.markdown('### Office Buildings')
 st.markdown('---')
 
-# Check if data loaded successfully
+# Check if data loaded
 if not WEATHER_DATA_BY_STATE:
-    st.error("⚠️ Unable to load weather data. Please ensure 'weather_information.csv' is in the correct location.")
+    st.error("⚠️ Unable to load weather data.")
     st.stop()
 
 if SAVINGS_LOOKUP.empty:
-    st.error("⚠️ Unable to load savings lookup data. Please ensure 'savings_lookup.csv' is in the correct location.")
+    st.error("⚠️ Unable to load savings lookup data.")
     st.stop()
 
 progress = st.session_state.step / 4
@@ -271,10 +313,9 @@ elif st.session_state.step == 2:
         csw_type = st.selectbox('Type of CSW Analyzed', options=CSW_TYPES, index=CSW_TYPES.index(st.session_state.get('csw_type', 'Double')), key='csw_type')
         csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=st.session_state.get('csw_area', 12000), step=100, key='csw_area')
         
-        # Auto-calculate and display WWR (updates dynamically)
         if csw_area > 0 and building_area > 0 and num_floors > 0:
             wwr = calculate_wwr(csw_area, building_area, num_floors)
-            st.metric('Window-to-Wall Ratio', f"{wwr:.1%}", help="Automatically calculated based on building area, floors, and CSW area")
+            st.metric('Window-to-Wall Ratio', f"{wwr:.1%}", help="Automatically calculated")
     
     col_back, col_next = st.columns([1, 1])
     with col_back:
@@ -357,14 +398,14 @@ elif st.session_state.step == 4:
         with col2:
             st.metric('New EUI', f'{results["new_eui"]:.2f} kBtu/SF-yr')
         
-        # Debug info in expander
         with st.expander('🔍 Calculation Details'):
             st.write(f"**Heating Savings:** {results['heating_per_sf']:.4f} kWh/SF-CSW")
             st.write(f"**Cooling Savings:** {results['cooling_per_sf']:.4f} kWh/SF-CSW")
             st.write(f"**Gas Savings:** {results['gas_per_sf']:.4f} therms/SF-CSW")
             st.write(f"**HDD:** {results['hdd']:,}")
             st.write(f"**CDD:** {results['cdd']:,}")
-            st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}" if results['wwr'] else "")
+            if results['wwr']:
+                st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
     
     if st.button('← Start Over'):
         st.session_state.step = 1
@@ -385,53 +426,3 @@ with st.sidebar:
     if WEATHER_DATA_BY_STATE and not SAVINGS_LOOKUP.empty:
         st.markdown('---')
         st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities | ✅ {len(SAVINGS_LOOKUP)} lookup combinations')
- load_weather_data():
-    """Load weather data from CSV file"""
-    try:
-        df = pd.read_csv('weather_information.csv')
-        df['State'] = df['State'].replace('Aklaska', 'Alaska')
-        
-        weather_dict = {}
-        for _, row in df.iterrows():
-            state = row['State']
-            city = row['Cities']
-            hdd = row['Heating Degree Days (HDD)']
-            cdd = row['Cooling Degree Days (CDD)']
-            
-            if state not in weather_dict:
-                weather_dict[state] = {}
-            
-            weather_dict[state][city] = {'HDD': hdd, 'CDD': cdd}
-        
-        return weather_dict
-    except FileNotFoundError:
-        st.error("⚠️ Weather data file not found")
-        return {}
-
-@st.cache_data
-def load_savings_lookup():
-    """Load savings lookup table from CSV"""
-    try:
-        df = pd.read_csv('savings_lookup.csv')
-        return df
-    except FileNotFoundError:
-        st.error("⚠️ Savings lookup file not found")
-        return pd.DataFrame()
-
-# Load data
-WEATHER_DATA_BY_STATE = load_weather_data()
-SAVINGS_LOOKUP = load_savings_lookup()
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def calculate_wwr(csw_area, building_area, num_floors):
-    """Excel F28: F27/((F18/F19)^0.5*4*15*F19)"""
-    if num_floors == 0 or building_area == 0:
-        return 0
-    floor_area = building_area / num_floors
-    wall_area = (floor_area ** 0.5) * 4 * 15 * num_floors
-    return csw_area / wall_area if wall_area > 0 else 0
-
-def
