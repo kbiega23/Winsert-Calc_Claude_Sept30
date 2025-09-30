@@ -168,6 +168,7 @@ def find_baseline_eui_row(config):
     else:
         fuel_type = 'Electric'
     
+    # First try with exact match
     mask = (
         (REGRESSION_COEFFICIENTS['base'] == config['base']) &
         (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
@@ -177,6 +178,18 @@ def find_baseline_eui_row(config):
     )
     
     result = REGRESSION_COEFFICIENTS[mask]
+    
+    if result.empty:
+        # Try with fuel column check (handle NaN)
+        mask = (
+            (REGRESSION_COEFFICIENTS['base'] == config['base']) &
+            (REGRESSION_COEFFICIENTS['csw'].isna() | (REGRESSION_COEFFICIENTS['csw'] == 'N/A')) &
+            (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+            (REGRESSION_COEFFICIENTS['hvac_fuel'] == fuel_type) &
+            (REGRESSION_COEFFICIENTS['fuel'].isna() | (REGRESSION_COEFFICIENTS['fuel'] == 'N/A')) &
+            (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
+        )
+        result = REGRESSION_COEFFICIENTS[mask]
     
     if result.empty:
         return None
@@ -296,6 +309,11 @@ def calculate_savings(inputs):
     
     if baseline_row_high is None or baseline_row_low is None:
         st.error("⚠️ Could not find baseline EUI coefficients")
+        st.write("**Debug Info:**")
+        st.write(f"Looking for: base={config_high['base']}, size={config_high['size']}, fuel={'Gas' if config_high['fuel']=='Natural Gas' else 'Electric'}, hours={config_high['hours']}")
+        st.write(f"Available baseline rows in CSV:")
+        baseline_rows = REGRESSION_COEFFICIENTS[REGRESSION_COEFFICIENTS['csw'] == 'N/A']
+        st.dataframe(baseline_rows[['row', 'base', 'size', 'hvac_fuel', 'hours']])
         return None
     
     # Baseline EUI uses HDD
