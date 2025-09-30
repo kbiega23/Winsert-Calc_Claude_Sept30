@@ -398,12 +398,30 @@ elif st.session_state.step == 4:
         with col2:
             st.metric('New EUI', f'{results["new_eui"]:.2f} kBtu/SF-yr')
         
-        with st.expander('🔍 Calculation Details'):
-            st.write(f"**Heating Savings:** {results['heating_per_sf']:.4f} kWh/SF-CSW")
-            st.write(f"**Cooling Savings:** {results['cooling_per_sf']:.4f} kWh/SF-CSW")
-            st.write(f"**Gas Savings:** {results['gas_per_sf']:.4f} therms/SF-CSW")
-            st.write(f"**HDD:** {results['hdd']:,}")
-            st.write(f"**CDD:** {results['cdd']:,}")
+        with st.expander('🔍 Calculation Details (Debug Info)'):
+            st.write("**Lookup Keys:**")
+            q24, q25 = calculate_q24_q25(inputs['operating_hours'])
+            key_high = build_lookup_key(inputs, q24)
+            key_low = build_lookup_key(inputs, q25)
+            st.code(f"High key ({q24} hrs): {key_high}")
+            st.code(f"Low key ({q25} hrs): {key_low}")
+            
+            st.write("**Lookup Values:**")
+            values_high = get_savings_from_lookup(key_high)
+            values_low = get_savings_from_lookup(key_low)
+            if values_high and values_low:
+                st.write(f"High values: Heat={values_high['heating_kwh']:.4f}, Cool={values_high['cooling_kwh']:.4f}, Gas={values_high['gas_therms']:.4f}, EUI={values_high['baseline_eui']:.2f}")
+                st.write(f"Low values: Heat={values_low['heating_kwh']:.4f}, Cool={values_low['cooling_kwh']:.4f}, Gas={values_low['gas_therms']:.4f}, EUI={values_low['baseline_eui']:.2f}")
+            
+            st.write("**Interpolated Results:**")
+            st.write(f"Heating Savings: {results['heating_per_sf']:.4f} kWh/SF-CSW")
+            st.write(f"Cooling Savings: {results['cooling_per_sf']:.4f} kWh/SF-CSW")
+            st.write(f"Gas Savings: {results['gas_per_sf']:.4f} therms/SF-CSW")
+            st.write(f"Baseline EUI: {results['baseline_eui']:.2f} kBtu/SF-yr")
+            
+            st.write("**Climate Data:**")
+            st.write(f"HDD: {results['hdd']:,}, CDD: {results['cdd']:,}")
+            
             if results['wwr']:
                 st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
     
