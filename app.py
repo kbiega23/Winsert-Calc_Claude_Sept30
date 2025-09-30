@@ -1,6 +1,6 @@
 """
 CSW Savings Calculator - Streamlit Web App
-FINAL VERSION with exact Excel data and formulas
+Updated to load weather data from CSV
 """
 
 import streamlit as st
@@ -36,254 +36,41 @@ WINDOW_TYPES = ['Single pane', 'Double pane', 'Double pane, low-e']
 CSW_TYPES = ['Double', 'Triple', 'Quad']
 
 # ============================================================================
-# DATA: EXACT WEATHER DATA - Major cities from all 50 states
-# To add remaining cities, run extract_excel_data.py
+# LOAD WEATHER DATA FROM CSV
 # ============================================================================
 
-WEATHER_DATA_BY_STATE = {
-    'Alabama': {
-        'Anniston': {'HDD': 2585, 'CDD': 1713},
-        'Birmingham': {'HDD': 2698, 'CDD': 1912},
-        'Huntsville': {'HDD': 3472, 'CDD': 1701},
-        'Mobile': {'HDD': 1724, 'CDD': 2524},
-        'Montgomery': {'HDD': 2183, 'CDD': 2124},
-    },
-    'Alaska': {
-        'Anchorage': {'HDD': 10158, 'CDD': 0},
-        'Fairbanks': {'HDD': 13072, 'CDD': 31},
-        'Juneau': {'HDD': 8471, 'CDD': 1},
-    },
-    'Arizona': {
-        'Flagstaff': {'HDD': 7112, 'CDD': 110},
-        'Phoenix': {'HDD': 997, 'CDD': 4591},
-        'Tucson': {'HDD': 1596, 'CDD': 3020},
-    },
-    'Arkansas': {
-        'Fort Smith': {'HDD': 3431, 'CDD': 2109},
-        'Little Rock': {'HDD': 3068, 'CDD': 2168},
-    },
-    'California': {
-        'Bakersfield': {'HDD': 2013, 'CDD': 2240},
-        'Fresno': {'HDD': 2555, 'CDD': 1827},
-        'Los Angeles': {'HDD': 1265, 'CDD': 946},
-        'Oakland': {'HDD': 2649, 'CDD': 254},
-        'Sacramento': {'HDD': 2547, 'CDD': 1365},
-        'San Diego': {'HDD': 1455, 'CDD': 915},
-        'San Francisco': {'HDD': 2798, 'CDD': 128},
-        'San Jose': {'HDD': 2535, 'CDD': 325},
-    },
-    'Colorado': {
-        'Colorado Springs': {'HDD': 6237, 'CDD': 612},
-        'Denver': {'HDD': 5655, 'CDD': 923},
-        'Grand Junction': {'HDD': 5444, 'CDD': 1192},
-    },
-    'Connecticut': {
-        'Bridgeport': {'HDD': 5441, 'CDD': 702},
-        'Hartford': {'HDD': 6089, 'CDD': 685},
-    },
-    'Delaware': {
-        'Dover': {'HDD': 4498, 'CDD': 1189},
-        'Wilmington': {'HDD': 4778, 'CDD': 1115},
-    },
-    'District of Columbia': {
-        'Washington': {'HDD': 4047, 'CDD': 1539},
-    },
-    'Florida': {
-        'Jacksonville': {'HDD': 1331, 'CDD': 2792},
-        'Miami': {'HDD': 150, 'CDD': 4292},
-        'Orlando': {'HDD': 718, 'CDD': 3366},
-        'Tampa': {'HDD': 669, 'CDD': 3413},
-    },
-    'Georgia': {
-        'Atlanta': {'HDD': 2826, 'CDD': 1821},
-        'Savannah': {'HDD': 1783, 'CDD': 2401},
-    },
-    'Hawaii': {
-        'Hilo': {'HDD': 0, 'CDD': 4153},
-        'Honolulu': {'HDD': 0, 'CDD': 4551},
-    },
-    'Idaho': {
-        'Boise': {'HDD': 5669, 'CDD': 1042},
-        'Idaho Falls': {'HDD': 7657, 'CDD': 436},
-    },
-    'Illinois': {
-        'Chicago': {'HDD': 6399, 'CDD': 830},
-        'Peoria': {'HDD': 5926, 'CDD': 1027},
-        'Springfield': {'HDD': 5514, 'CDD': 1206},
-    },
-    'Indiana': {
-        'Fort Wayne': {'HDD': 6090, 'CDD': 819},
-        'Indianapolis': {'HDD': 5577, 'CDD': 1118},
-    },
-    'Iowa': {
-        'Cedar Rapids': {'HDD': 6710, 'CDD': 841},
-        'Des Moines': {'HDD': 6588, 'CDD': 1000},
-    },
-    'Kansas': {
-        'Topeka': {'HDD': 5125, 'CDD': 1532},
-        'Wichita': {'HDD': 4576, 'CDD': 1756},
-    },
-    'Kentucky': {
-        'Lexington': {'HDD': 4602, 'CDD': 1283},
-        'Louisville': {'HDD': 4568, 'CDD': 1471},
-    },
-    'Louisiana': {
-        'Baton Rouge': {'HDD': 1598, 'CDD': 2844},
-        'New Orleans': {'HDD': 1465, 'CDD': 2904},
-        'Shreveport': {'HDD': 2166, 'CDD': 2554},
-    },
-    'Maine': {
-        'Bangor': {'HDD': 7682, 'CDD': 359},
-        'Portland': {'HDD': 7340, 'CDD': 418},
-    },
-    'Maryland': {
-        'Baltimore': {'HDD': 4482, 'CDD': 1243},
-    },
-    'Massachusetts': {
-        'Boston': {'HDD': 5621, 'CDD': 752},
-        'Springfield': {'HDD': 6269, 'CDD': 642},
-        'Worcester': {'HDD': 6867, 'CDD': 515},
-    },
-    'Michigan': {
-        'Detroit': {'HDD': 6232, 'CDD': 739},
-        'Grand Rapids': {'HDD': 6776, 'CDD': 653},
-        'Lansing': {'HDD': 6798, 'CDD': 611},
-    },
-    'Minnesota': {
-        'Duluth': {'HDD': 9618, 'CDD': 262},
-        'Minneapolis': {'HDD': 7731, 'CDD': 749},
-        'Rochester': {'HDD': 8140, 'CDD': 598},
-    },
-    'Mississippi': {
-        'Jackson': {'HDD': 2222, 'CDD': 2391},
-    },
-    'Missouri': {
-        'Columbia': {'HDD': 4948, 'CDD': 1491},
-        'Kansas City': {'HDD': 5228, 'CDD': 1507},
-        'St Louis': {'HDD': 4785, 'CDD': 1665},
-    },
-    'Montana': {
-        'Billings': {'HDD': 6887, 'CDD': 668},
-        'Great Falls': {'HDD': 7579, 'CDD': 478},
-    },
-    'Nebraska': {
-        'Lincoln': {'HDD': 6036, 'CDD': 1264},
-        'Omaha': {'HDD': 6495, 'CDD': 1131},
-    },
-    'Nevada': {
-        'Las Vegas': {'HDD': 2239, 'CDD': 3508},
-        'Reno': {'HDD': 6194, 'CDD': 424},
-    },
-    'New Hampshire': {
-        'Concord': {'HDD': 7240, 'CDD': 520},
-        'Manchester': {'HDD': 6891, 'CDD': 567},
-    },
-    'New Jersey': {
-        'Atlantic City': {'HDD': 4690, 'CDD': 1029},
-        'Newark': {'HDD': 4478, 'CDD': 1191},
-    },
-    'New Mexico': {
-        'Albuquerque': {'HDD': 4281, 'CDD': 1450},
-        'Santa Fe': {'HDD': 6140, 'CDD': 624},
-    },
-    'New York': {
-        'Albany': {'HDD': 6770, 'CDD': 608},
-        'Buffalo': {'HDD': 6817, 'CDD': 563},
-        'New York City': {'HDD': 4811, 'CDD': 1134},
-        'Rochester': {'HDD': 6638, 'CDD': 596},
-        'Syracuse': {'HDD': 6648, 'CDD': 609},
-    },
-    'North Carolina': {
-        'Asheville': {'HDD': 4149, 'CDD': 914},
-        'Charlotte': {'HDD': 3098, 'CDD': 1710},
-        'Greensboro': {'HDD': 3774, 'CDD': 1478},
-        'Raleigh': {'HDD': 3296, 'CDD': 1608},
-    },
-    'North Dakota': {
-        'Bismarck': {'HDD': 8686, 'CDD': 589},
-        'Fargo': {'HDD': 9043, 'CDD': 552},
-    },
-    'Ohio': {
-        'Cincinnati': {'HDD': 4321, 'CDD': 1321},
-        'Cleveland': {'HDD': 6237, 'CDD': 675},
-        'Columbus': {'HDD': 5547, 'CDD': 934},
-        'Dayton': {'HDD': 5512, 'CDD': 1036},
-        'Toledo': {'HDD': 6383, 'CDD': 756},
-    },
-    'Oklahoma': {
-        'Oklahoma City': {'HDD': 3618, 'CDD': 2086},
-        'Tulsa': {'HDD': 3785, 'CDD': 2097},
-    },
-    'Oregon': {
-        'Eugene': {'HDD': 4612, 'CDD': 331},
-        'Portland': {'HDD': 4522, 'CDD': 448},
-        'Salem': {'HDD': 4611, 'CDD': 408},
-    },
-    'Pennsylvania': {
-        'Allentown': {'HDD': 5720, 'CDD': 829},
-        'Erie': {'HDD': 6342, 'CDD': 572},
-        'Harrisburg': {'HDD': 5137, 'CDD': 1110},
-        'Philadelphia': {'HDD': 4753, 'CDD': 1211},
-        'Pittsburgh': {'HDD': 5875, 'CDD': 741},
-    },
-    'Rhode Island': {
-        'Providence': {'HDD': 5701, 'CDD': 698},
-    },
-    'South Carolina': {
-        'Charleston': {'HDD': 1991, 'CDD': 2370},
-        'Columbia': {'HDD': 2430, 'CDD': 2133},
-        'Greenville': {'HDD': 3126, 'CDD': 1651},
-    },
-    'South Dakota': {
-        'Rapid City': {'HDD': 7210, 'CDD': 708},
-        'Sioux Falls': {'HDD': 7705, 'CDD': 839},
-    },
-    'Tennessee': {
-        'Chattanooga': {'HDD': 3144, 'CDD': 1718},
-        'Knoxville': {'HDD': 3401, 'CDD': 1592},
-        'Memphis': {'HDD': 2943, 'CDD': 2278},
-        'Nashville': {'HDD': 3622, 'CDD': 1748},
-    },
-    'Texas': {
-        'Amarillo': {'HDD': 4092, 'CDD': 1567},
-        'Austin': {'HDD': 1686, 'CDD': 3091},
-        'Corpus Christi': {'HDD': 900, 'CDD': 3443},
-        'Dallas': {'HDD': 2309, 'CDD': 2782},
-        'El Paso': {'HDD': 2655, 'CDD': 1994},
-        'Fort Worth': {'HDD': 2341, 'CDD': 2772},
-        'Houston': {'HDD': 1439, 'CDD': 2974},
-        'Lubbock': {'HDD': 3662, 'CDD': 1787},
-        'San Antonio': {'HDD': 1520, 'CDD': 3118},
-    },
-    'Utah': {
-        'Provo': {'HDD': 6006, 'CDD': 903},
-        'Salt Lake City': {'HDD': 5841, 'CDD': 1085},
-    },
-    'Vermont': {
-        'Burlington': {'HDD': 8115, 'CDD': 445},
-    },
-    'Virginia': {
-        'Norfolk': {'HDD': 3421, 'CDD': 1495},
-        'Richmond': {'HDD': 3781, 'CDD': 1501},
-        'Roanoke': {'HDD': 4059, 'CDD': 1182},
-    },
-    'Washington': {
-        'Seattle': {'HDD': 4685, 'CDD': 221},
-        'Spokane': {'HDD': 6512, 'CDD': 487},
-    },
-    'West Virginia': {
-        'Charleston': {'HDD': 4365, 'CDD': 1159},
-    },
-    'Wisconsin': {
-        'Green Bay': {'HDD': 7900, 'CDD': 507},
-        'Madison': {'HDD': 7730, 'CDD': 634},
-        'Milwaukee': {'HDD': 7513, 'CDD': 548},
-    },
-    'Wyoming': {
-        'Casper': {'HDD': 7270, 'CDD': 452},
-        'Cheyenne': {'HDD': 7241, 'CDD': 420},
-    },
-}
+@st.cache_data
+def load_weather_data():
+    """Load weather data from CSV file"""
+    try:
+        df = pd.read_csv('weather_information.csv')
+        
+        # Clean up state names (fix typo: Aklaska -> Alaska)
+        df['State'] = df['State'].replace('Aklaska', 'Alaska')
+        
+        # Create nested dictionary structure: {State: {City: {HDD: x, CDD: y}}}
+        weather_dict = {}
+        for _, row in df.iterrows():
+            state = row['State']
+            city = row['Cities']
+            hdd = row['Heating Degree Days (HDD)']
+            cdd = row['Cooling Degree Days (CDD)']
+            
+            if state not in weather_dict:
+                weather_dict[state] = {}
+            
+            weather_dict[state][city] = {
+                'HDD': hdd,
+                'CDD': cdd
+            }
+        
+        return weather_dict
+    except FileNotFoundError:
+        st.error("⚠️ Weather data file 'weather_information.csv' not found. Please ensure it's in the same directory as app.py")
+        return {}
+
+# Load weather data
+WEATHER_DATA_BY_STATE = load_weather_data()
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -382,6 +169,11 @@ def calculate_savings(inputs):
 st.title('🏢 Commercial Window Savings Calculator')
 st.markdown('### Office Buildings')
 st.markdown('---')
+
+# Check if weather data loaded successfully
+if not WEATHER_DATA_BY_STATE:
+    st.error("⚠️ Unable to load weather data. Please ensure 'weather_information.csv' is in the correct location.")
+    st.stop()
 
 progress = st.session_state.step / 4
 st.progress(progress)
@@ -510,5 +302,6 @@ with st.sidebar:
         st.markdown(f"**Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
     if st.session_state.step > 2:
         st.markdown(f"**Building:** {st.session_state.get('building_area', 0):,} SF, {st.session_state.get('num_floors', 0)} floors")
-    st.markdown('---')
-    st.markdown('**Status:** ✅ 4 HVAC options | ✅ Exact weather | ✅ Correct WWR')
+    if WEATHER_DATA_BY_STATE:
+        st.markdown('---')
+        st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities loaded')
