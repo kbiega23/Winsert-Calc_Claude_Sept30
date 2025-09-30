@@ -200,18 +200,22 @@ if st.session_state.step == 1:
             st.rerun()
 
 elif st.session_state.step == 2:
-    st.header('Step 2: Building Information')
+    st.header('Step 2: Building Envelope Information')
     col1, col2 = st.columns(2)
     
     with col1:
-        st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=75000, step=1000, key='building_area')
-        st.number_input('Number of Floors', min_value=1, max_value=50, value=5, key='num_floors')
-        st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=8000, key='operating_hours')
+        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area')
+        num_floors = st.number_input('Number of Floors', min_value=1, max_value=50, value=st.session_state.get('num_floors', 5), key='num_floors')
+        existing_window = st.selectbox('Type of Existing Window', options=WINDOW_TYPES, index=WINDOW_TYPES.index(st.session_state.get('existing_window', 'Single pane')), key='existing_window')
     
     with col2:
-        st.selectbox('HVAC System Type', options=HVAC_SYSTEMS, key='hvac_system')
-        st.selectbox('Heating Fuel', options=HEATING_FUELS, key='heating_fuel')
-        st.selectbox('Cooling Installed?', options=COOLING_OPTIONS, key='cooling_installed')
+        csw_type = st.selectbox('Type of CSW Analyzed', options=CSW_TYPES, index=CSW_TYPES.index(st.session_state.get('csw_type', 'Double')), key='csw_type')
+        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=st.session_state.get('csw_area', 12000), step=100, key='csw_area')
+        
+        # Auto-calculate and display WWR (updates dynamically)
+        if csw_area > 0 and building_area > 0 and num_floors > 0:
+            wwr = calculate_wwr(csw_area, building_area, num_floors)
+            st.metric('Window-to-Wall Ratio', f"{wwr:.1%}", help="Automatically calculated based on building area, floors, and CSW area")
     
     col_back, col_next = st.columns([1, 1])
     with col_back:
@@ -224,21 +228,18 @@ elif st.session_state.step == 2:
             st.rerun()
 
 elif st.session_state.step == 3:
-    st.header('Step 3: Window & Cost Information')
+    st.header('Step 3: HVAC & Utility Information')
     col1, col2 = st.columns(2)
     
     with col1:
-        st.selectbox('Type of Existing Window', options=WINDOW_TYPES, key='existing_window')
-        st.selectbox('Type of CSW Analyzed', options=CSW_TYPES, key='csw_type')
-        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(st.session_state.get('building_area', 75000) * 0.5), value=12000, step=100, key='csw_area')
-        
-        if csw_area > 0 and st.session_state.get('building_area') and st.session_state.get('num_floors'):
-            wwr = calculate_wwr(csw_area, st.session_state.get('building_area'), st.session_state.get('num_floors'))
-            st.info(f"**Est. Window-to-Wall Ratio:** {wwr:.1%}")
+        st.number_input('Electric Rate ($/kWh)', min_value=0.01, max_value=1.0, value=st.session_state.get('electric_rate', 0.12), step=0.01, format='%.3f', key='electric_rate')
+        st.number_input('Natural Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='gas_rate')
+        st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours')
     
     with col2:
-        st.number_input('Electric Rate ($/kWh)', min_value=0.01, max_value=1.0, value=0.12, step=0.01, format='%.3f', key='electric_rate')
-        st.number_input('Natural Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=0.80, step=0.05, format='%.2f', key='gas_rate')
+        st.selectbox('HVAC System Type', options=HVAC_SYSTEMS, index=HVAC_SYSTEMS.index(st.session_state.get('hvac_system', HVAC_SYSTEMS[0])), key='hvac_system')
+        st.selectbox('Heating Fuel', options=HEATING_FUELS, index=HEATING_FUELS.index(st.session_state.get('heating_fuel', 'Electric')), key='heating_fuel')
+        st.selectbox('Cooling Installed?', options=COOLING_OPTIONS, index=COOLING_OPTIONS.index(st.session_state.get('cooling_installed', 'Yes')), key='cooling_installed')
     
     col_back, col_next = st.columns([1, 1])
     with col_back:
@@ -302,6 +303,11 @@ with st.sidebar:
         st.markdown(f"**Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
     if st.session_state.step > 2:
         st.markdown(f"**Building:** {st.session_state.get('building_area', 0):,} SF, {st.session_state.get('num_floors', 0)} floors")
+        st.markdown(f"**Windows:** {st.session_state.get('existing_window', 'N/A')} → {st.session_state.get('csw_type', 'N/A')} CSW")
+        st.markdown(f"**CSW Area:** {st.session_state.get('csw_area', 0):,} SF")
+    if st.session_state.step > 3:
+        st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
+        st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
     if WEATHER_DATA_BY_STATE:
         st.markdown('---')
         st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities loaded')
