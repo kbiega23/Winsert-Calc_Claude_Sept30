@@ -1,6 +1,6 @@
 """
 CSW Savings Calculator - Streamlit Web App
-COMPLETE VERSION with working calculations from Excel
+REGRESSION-BASED VERSION - Calculates dynamically for each city
 """
 
 import streamlit as st
@@ -64,18 +64,18 @@ def load_weather_data():
         return {}
 
 @st.cache_data
-def load_savings_lookup():
-    """Load savings lookup table from CSV"""
+def load_regression_coefficients():
+    """Load regression coefficients from CSV"""
     try:
-        df = pd.read_csv('savings_lookup.csv')
+        df = pd.read_csv('regression_coefficients.csv')
         return df
     except FileNotFoundError:
-        st.error("⚠️ Savings lookup file not found")
+        st.error("⚠️ Regression coefficients file not found")
         return pd.DataFrame()
 
 # Load data
 WEATHER_DATA_BY_STATE = load_weather_data()
-SAVINGS_LOOKUP = load_savings_lookup()
+REGRESSION_COEFFICIENTS = load_regression_coefficients()
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -89,63 +89,118 @@ def calculate_wwr(csw_area, building_area, num_floors):
     wall_area = (floor_area ** 0.5) * 4 * 15 * num_floors
     return csw_area / wall_area if wall_area > 0 else 0
 
-def build_lookup_key(inputs, hours):
+def build_lookup_config(inputs, hours):
     """
-    Build the lookup key string matching Excel's concatenation logic
-    Format: BaseWindow + CSWType + Size + BuildingType + HVACType + FuelType + Hours
+    Build configuration for finding regression row
+    Returns dict with base, csw, size, hvac_fuel, fuel, hours
     """
-    # Base window type (K24)
+    # Base window type
     if inputs['existing_window'] == 'Single pane':
         base = 'Single'
     else:
         base = 'Double'
     
-    # CSW type (L24)
+    # CSW type
     csw_type = inputs['csw_type']
     
-    # Size (M24)
+    # Size
     if inputs['building_area'] > 30000 and inputs['hvac_system'] == 'Built-up VAV with hydronic reheat':
         size = 'Large'
     else:
         size = 'Mid'
     
-    # Building type (N24)
-    building_type = 'Office'
-    
-    # HVAC System Type (O24)
+    # HVAC System Type
     heating_fuel = inputs['heating_fuel']
     if size == 'Mid':
         if heating_fuel in ['Electric', 'None']:
-            hvac_type = 'PVAV_Elec'
+            hvac_fuel = 'PVAV_Elec'
         else:
-            hvac_type = 'PVAV_Gas'
+            hvac_fuel = 'PVAV_Gas'
     else:
-        hvac_type = 'VAV'
+        hvac_fuel = 'VAV'
     
-    # Fuel type (P24)
+    # Fuel type
     fuel = 'Electric' if heating_fuel == 'None' else heating_fuel
     
-    # Combine all parts
-    lookup_key = f"{base}{csw_type}{size}{building_type}{hvac_type}{fuel}{hours}"
-    
-    return lookup_key
+    return {
+        'base': base,
+        'csw': csw_type,
+        'size': size,
+        'hvac_fuel': hvac_fuel,
+        'fuel': fuel,
+        'hours': hours
+    }
 
-def get_savings_from_lookup(lookup_key):
-    """Query the savings lookup table for a specific key"""
-    if SAVINGS_LOOKUP.empty:
+def find_regression_row(config):
+    """Find matching regression row based on configuration"""
+    if REGRESSION_COEFFICIENTS.empty:
         return None
     
-    result = SAVINGS_LOOKUP[SAVINGS_LOOKUP['lookup_key'] == lookup_key]
+    # Filter by configuration
+    mask = (
+        (REGRESSION_COEFFICIENTS['base'] == config['base']) &
+        (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
+        (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+        (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel']) &
+        (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
+    )
+    
+    # For fuel, handle NaN values
+    if pd.notna(config['fuel']):
+        mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
+    
+    result = REGRESSION_COEFFICIENTS[mask]
     
     if result.empty:
         return None
     
-    return {
-        'heating_kwh': result.iloc[0]['heating_kwh'],
-        'cooling_kwh': result.iloc[0]['cooling_kwh'],
-        'gas_therms': result.iloc[0]['gas_therms'],
-        'baseline_eui': result.iloc[0]['baseline_eui']
-    }
+    return result.iloc[0]
+
+def find_baseline_eui_row(config):
+    """Find baseline EUI regression row"""
+    if REGRESSION_COEFFICIENTS.empty:
+        return None
+    
+    # Baseline EUI rows have csw='N/A' and specific patterns
+    # Determine if Electric or Gas based system
+    if config['fuel'] == 'Natural Gas':
+        fuel_type = 'Gas'
+    else:
+        fuel_type = 'Electric'
+    
+    mask = (
+        (REGRESSION_COEFFICIENTS['base'] == config['base']) &
+        (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
+        (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+        (REGRESSION_COEFFICIENTS['hvac_fuel'] == fuel_type) &
+        (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
+    )
+    
+    result = REGRESSION_COEFFICIENTS[mask]
+    
+    if result.empty:
+        return None
+    
+    return result.iloc[0]
+
+def calculate_from_regression(row, degree_days, is_heating=True):
+    """
+    Calculate value using regression formula: value = a + b*DD + c*DD²
+    """
+    if row is None:
+        return 0
+    
+    if is_heating:
+        a = row['heat_a']
+        b = row['heat_b']
+        c = row['heat_c']
+    else:  # cooling
+        a = row['cool_a']
+        b = row['cool_b']
+        c = row['cool_c']
+    
+    value = a + b * degree_days + c * (degree_days ** 2)
+    return value
 
 def interpolate_hours(operating_hours, val_8760, val_2080_or_2912, q24, q25):
     """Excel interpolation formula"""
@@ -167,7 +222,9 @@ def calculate_q24_q25(operating_hours):
     return q24, q25
 
 def calculate_savings(inputs):
-    """Main calculation function"""
+    """
+    Main calculation function using regression formulas
+    """
     building_area = inputs['building_area']
     csw_area = inputs['csw_area']
     operating_hours = inputs['operating_hours']
@@ -177,6 +234,7 @@ def calculate_savings(inputs):
     state = inputs['state']
     city = inputs['city']
     cooling_installed = inputs['cooling_installed']
+    heating_fuel = inputs['heating_fuel']
     
     # Get weather data
     weather = WEATHER_DATA_BY_STATE.get(state, {}).get(city, {'HDD': 0, 'CDD': 0})
@@ -186,41 +244,64 @@ def calculate_savings(inputs):
     # Determine interpolation points
     q24, q25 = calculate_q24_q25(operating_hours)
     
-    # Build lookup keys
-    key_high = build_lookup_key(inputs, q24)
-    key_low = build_lookup_key(inputs, q25)
+    # Build configurations for both hour thresholds
+    config_high = build_lookup_config(inputs, q24)
+    config_low = build_lookup_config(inputs, q25)
     
-    # Get savings values
-    values_high = get_savings_from_lookup(key_high)
-    values_low = get_savings_from_lookup(key_low)
+    # Find regression rows
+    row_high = find_regression_row(config_high)
+    row_low = find_regression_row(config_low)
     
-    if not values_high or not values_low:
-        st.error(f"⚠️ Lookup keys not found: {key_high} or {key_low}")
+    if row_high is None or row_low is None:
+        st.error(f"⚠️ Could not find regression coefficients for configuration")
         return None
     
-    # Interpolate heating savings
-    s_high = values_high['heating_kwh']
-    s_low = values_low['heating_kwh']
-    c31 = interpolate_hours(operating_hours, s_high, s_low, q24, q25)
+    # Calculate heating savings based on fuel type
+    if heating_fuel == 'Natural Gas':
+        # Gas heating - use HDD for heating calculation
+        heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
+        heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
+        gas_savings_high = heating_high
+        gas_savings_low = heating_low
+        electric_heating_high = 0
+        electric_heating_low = 0
+    else:
+        # Electric heating - use HDD for heating calculation
+        electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
+        electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
+        gas_savings_high = 0
+        gas_savings_low = 0
     
-    # Interpolate cooling savings
-    t_high = values_high['cooling_kwh']
-    t_low = values_low['cooling_kwh']
-    c32_base = interpolate_hours(operating_hours, t_high, t_low, q24, q25)
+    # Calculate cooling savings - use CDD
+    cooling_high = calculate_from_regression(row_high, cdd, is_heating=False)
+    cooling_low = calculate_from_regression(row_low, cdd, is_heating=False)
+    
+    # Interpolate for actual operating hours
+    if heating_fuel == 'Natural Gas':
+        c31 = 0  # No electric heating
+        c33 = interpolate_hours(operating_hours, gas_savings_high, gas_savings_low, q24, q25)
+    else:
+        c31 = interpolate_hours(operating_hours, electric_heating_high, electric_heating_low, q24, q25)
+        c33 = 0  # No gas heating
+    
+    c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
     
     # Apply cooling multiplier
     w24 = 1.0 if cooling_installed == "Yes" else 0.0
     c32 = c32_base * w24
     
-    # Interpolate gas savings
-    u_high = values_high['gas_therms']
-    u_low = values_low['gas_therms']
-    c33 = interpolate_hours(operating_hours, u_high, u_low, q24, q25)
+    # Calculate baseline EUI using separate baseline regression
+    baseline_row_high = find_baseline_eui_row(config_high)
+    baseline_row_low = find_baseline_eui_row(config_low)
     
-    # Interpolate baseline EUI
-    v_high = values_high['baseline_eui']
-    v_low = values_low['baseline_eui']
-    baseline_eui = interpolate_hours(operating_hours, v_high, v_low, q24, q25)
+    if baseline_row_high is None or baseline_row_low is None:
+        st.error("⚠️ Could not find baseline EUI coefficients")
+        return None
+    
+    # Baseline EUI uses HDD
+    baseline_eui_high = calculate_from_regression(baseline_row_high, hdd, is_heating=True)
+    baseline_eui_low = calculate_from_regression(baseline_row_low, hdd, is_heating=True)
+    baseline_eui = interpolate_hours(operating_hours, baseline_eui_high, baseline_eui_low, q24, q25)
     
     # Calculate total energy savings
     electric_savings_kwh = (c31 + c32) * csw_area
@@ -272,8 +353,8 @@ if not WEATHER_DATA_BY_STATE:
     st.error("⚠️ Unable to load weather data.")
     st.stop()
 
-if SAVINGS_LOOKUP.empty:
-    st.error("⚠️ Unable to load savings lookup data.")
+if REGRESSION_COEFFICIENTS.empty:
+    st.error("⚠️ Unable to load regression coefficients.")
     st.stop()
 
 progress = st.session_state.step / 4
@@ -398,30 +479,12 @@ elif st.session_state.step == 4:
         with col2:
             st.metric('New EUI', f'{results["new_eui"]:.2f} kBtu/SF-yr')
         
-        with st.expander('🔍 Calculation Details (Debug Info)'):
-            st.write("**Lookup Keys:**")
-            q24, q25 = calculate_q24_q25(inputs['operating_hours'])
-            key_high = build_lookup_key(inputs, q24)
-            key_low = build_lookup_key(inputs, q25)
-            st.code(f"High key ({q24} hrs): {key_high}")
-            st.code(f"Low key ({q25} hrs): {key_low}")
-            
-            st.write("**Lookup Values:**")
-            values_high = get_savings_from_lookup(key_high)
-            values_low = get_savings_from_lookup(key_low)
-            if values_high and values_low:
-                st.write(f"High values: Heat={values_high['heating_kwh']:.4f}, Cool={values_high['cooling_kwh']:.4f}, Gas={values_high['gas_therms']:.4f}, EUI={values_high['baseline_eui']:.2f}")
-                st.write(f"Low values: Heat={values_low['heating_kwh']:.4f}, Cool={values_low['cooling_kwh']:.4f}, Gas={values_low['gas_therms']:.4f}, EUI={values_low['baseline_eui']:.2f}")
-            
-            st.write("**Interpolated Results:**")
-            st.write(f"Heating Savings: {results['heating_per_sf']:.4f} kWh/SF-CSW")
-            st.write(f"Cooling Savings: {results['cooling_per_sf']:.4f} kWh/SF-CSW")
-            st.write(f"Gas Savings: {results['gas_per_sf']:.4f} therms/SF-CSW")
-            st.write(f"Baseline EUI: {results['baseline_eui']:.2f} kBtu/SF-yr")
-            
-            st.write("**Climate Data:**")
-            st.write(f"HDD: {results['hdd']:,}, CDD: {results['cdd']:,}")
-            
+        with st.expander('🔍 Calculation Details'):
+            st.write(f"**Electric Heating:** {results['heating_per_sf']:.4f} kWh/SF-CSW")
+            st.write(f"**Cooling & Fans:** {results['cooling_per_sf']:.4f} kWh/SF-CSW")
+            st.write(f"**Gas Heating:** {results['gas_per_sf']:.4f} therms/SF-CSW")
+            st.write(f"**HDD:** {results['hdd']:,}")
+            st.write(f"**CDD:** {results['cdd']:,}")
             if results['wwr']:
                 st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
     
@@ -441,6 +504,6 @@ with st.sidebar:
         st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
         st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
         st.markdown(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}/yr")
-    if WEATHER_DATA_BY_STATE and not SAVINGS_LOOKUP.empty:
+    if WEATHER_DATA_BY_STATE and not REGRESSION_COEFFICIENTS.empty:
         st.markdown('---')
-        st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities | ✅ {len(SAVINGS_LOOKUP)} lookup combinations')
+        st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities | ✅ Regression-based')
