@@ -244,15 +244,12 @@ def calculate_savings(inputs):
     num_floors = inputs['num_floors']
     electric_rate = inputs['electric_rate']
     gas_rate = inputs['gas_rate']
-    state = inputs['state']
-    city = inputs['city']
     cooling_installed = inputs['cooling_installed']
     heating_fuel = inputs['heating_fuel']
     
-    # Get weather data
-    weather = WEATHER_DATA_BY_STATE.get(state, {}).get(city, {'HDD': 0, 'CDD': 0})
-    hdd = weather['HDD']
-    cdd = weather['CDD']
+    # Get HDD/CDD directly from inputs (passed from Step 1)
+    hdd = inputs.get('hdd', 0)
+    cdd = inputs.get('cdd', 0)
     
     # Determine interpolation points
     q24, q25 = calculate_q24_q25(operating_hours)
@@ -393,6 +390,9 @@ if st.session_state.step == 1:
             weather = WEATHER_DATA_BY_STATE[state][city]
             st.info(f"**Location HDD (Base 65):** {weather['HDD']:,}")
             st.info(f"**Location CDD (Base 65):** {weather['CDD']:,}")
+            # Store HDD/CDD in session state for later use
+            st.session_state['hdd'] = weather['HDD']
+            st.session_state['cdd'] = weather['CDD']
     
     if st.button('Next →', type='primary'):
         if state and city:
@@ -456,6 +456,8 @@ elif st.session_state.step == 4:
     inputs = {
         'state': st.session_state.get('state'),
         'city': st.session_state.get('city'),
+        'hdd': st.session_state.get('hdd', 0),
+        'cdd': st.session_state.get('cdd', 0),
         'building_area': st.session_state.get('building_area', 75000),
         'num_floors': st.session_state.get('num_floors', 5),
         'operating_hours': st.session_state.get('operating_hours', 8000),
