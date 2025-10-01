@@ -618,11 +618,11 @@ elif st.session_state.step == 4:
                 ),
                 yaxis=dict(
                     title='Energy Use Intensity (kBtu/SF-yr)',
-                    titlefont=dict(size=14),
+                    title_font=dict(size=14),
                     gridcolor='#E0E0E0'
                 ),
                 xaxis=dict(
-                    titlefont=dict(size=14)
+                    title_font=dict(size=14)
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
