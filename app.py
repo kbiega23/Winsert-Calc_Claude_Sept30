@@ -589,7 +589,7 @@ elif st.session_state.step == 4:
         col_chart, col_cost = st.columns([1.3, 1])
         
         with col_chart:
-            st.markdown('#### Energy Use Intensity (EUI) Reduction')
+            st.markdown('<h4 style="text-align: center;">Energy Use Intensity (EUI) Reduction</h4>', unsafe_allow_html=True)
             
             baseline_eui = results['baseline_eui']
             savings_eui = results['total_savings_kbtu_sf']
@@ -603,14 +603,14 @@ elif st.session_state.step == 4:
                 text = [f"{baseline_eui:.1f}", f"−{savings_eui:.1f}", f"{new_eui:.1f}"],
                 textposition = "outside",
                 textfont = dict(size=14, family='Arial Black'),
-                decreasing = {"marker":{"color":"#38ef7d"}},
+                decreasing = {"marker":{"color":"#4A90A4"}},
                 increasing = {"marker":{"color":"#FF6B6B"}},
-                totals = {"marker":{"color":"#4ECDC4"}},
+                totals = {"marker":{"color":"#2C5F6F"}},
                 connector = {"line":{"color":"rgb(63, 63, 63)"}},
             ))
             
             fig.update_layout(
-                height=350,
+                height=280,
                 showlegend=False,
                 yaxis=dict(
                     title='kBtu/SF-yr',
@@ -622,46 +622,43 @@ elif st.session_state.step == 4:
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                margin=dict(t=20, b=40, l=60, r=20)
+                margin=dict(t=10, b=40, l=60, r=20)
             )
             
             st.plotly_chart(fig, use_container_width=True)
             
             st.markdown(
                 f"""
-                <div style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                <div style='background: linear-gradient(135deg, #2C5F6F 0%, #4A90A4 100%); 
                             padding: 20px; 
                             border-radius: 10px; 
                             text-align: center;
-                            box-shadow: 0 3px 5px rgba(0,0,0,0.1);'>
+                            box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+                            margin-top: 10px;'>
                     <h2 style='color: white; margin: 0; font-size: 2.2em; font-weight: bold;'>
-                        {results['percent_eui_savings']:.1f}%
+                        {results['percent_eui_savings']:.1f}%, {results['total_savings_kbtu_sf']:.1f} kBtu/SF-yr
                     </h2>
-                    <p style='color: white; margin: 5px 0 0 0; font-size: 0.95em;'>
-                        EUI Reduction ({results['total_savings_kbtu_sf']:.1f} kBtu/SF-yr)
-                    </p>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
         
         with col_cost:
-            st.markdown('#### Annual Cost Savings')
+            st.markdown('<h4 style="text-align: center;">Annual Cost Savings</h4>', unsafe_allow_html=True)
             
             st.markdown(
                 f"""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            padding: 25px; 
+                <div style='background: linear-gradient(135deg, #2C5F6F 0%, #4A90A4 100%); 
+                            padding: 28px; 
                             border-radius: 10px; 
                             text-align: center;
                             box-shadow: 0 3px 5px rgba(0,0,0,0.1);
-                            margin-bottom: 15px;'>
+                            margin-bottom: 15px;
+                            margin-top: 10px;'>
+                    <p style='color: white; margin: 0 0 5px 0; font-size: 0.9em; font-weight: 500;'>Total Annual Savings</p>
                     <h1 style='color: white; margin: 0; font-size: 2.5em; font-weight: bold;'>
                         ${results['total_cost_savings']:,.0f}
                     </h1>
-                    <p style='color: #E0E0E0; margin: 8px 0 0 0; font-size: 1em;'>
-                        Total Annual Savings
-                    </p>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -669,13 +666,14 @@ elif st.session_state.step == 4:
             
             st.markdown(
                 f"""
-                <div style='background: #FFF3E0; 
-                            padding: 15px; 
+                <div style='background: linear-gradient(135deg, #6FA8B8 0%, #8FC1D0 100%); 
+                            padding: 20px; 
                             border-radius: 8px; 
                             margin-bottom: 12px;
-                            border-left: 4px solid #FF9800;'>
-                    <p style='margin: 0 0 5px 0; color: #E65100; font-size: 0.9em; font-weight: 600;'>⚡ Electric Savings</p>
-                    <p style='font-size: 1.6em; margin: 0; font-weight: bold; color: #E65100;'>
+                            text-align: center;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.08);'>
+                    <p style='margin: 0 0 5px 0; color: #1A4451; font-size: 0.9em; font-weight: 600;'>Electric Savings</p>
+                    <p style='font-size: 1.6em; margin: 0; font-weight: bold; color: #1A4451;'>
                         ${results['electric_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
                     </p>
                 </div>
@@ -685,12 +683,13 @@ elif st.session_state.step == 4:
             
             st.markdown(
                 f"""
-                <div style='background: #E3F2FD; 
-                            padding: 15px; 
+                <div style='background: linear-gradient(135deg, #6FA8B8 0%, #8FC1D0 100%); 
+                            padding: 20px; 
                             border-radius: 8px;
-                            border-left: 4px solid #2196F3;'>
-                    <p style='margin: 0 0 5px 0; color: #0D47A1; font-size: 0.9em; font-weight: 600;'>🔥 Natural Gas Savings</p>
-                    <p style='font-size: 1.6em; margin: 0; font-weight: bold; color: #0D47A1;'>
+                            text-align: center;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.08);'>
+                    <p style='margin: 0 0 5px 0; color: #1A4451; font-size: 0.9em; font-weight: 600;'>Natural Gas Savings</p>
+                    <p style='font-size: 1.6em; margin: 0; font-weight: bold; color: #1A4451;'>
                         ${results['gas_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
                     </p>
                 </div>
