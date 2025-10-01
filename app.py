@@ -418,13 +418,29 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     
     with col1:
-        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area')
-        num_floors = st.number_input('Number of Floors', min_value=1, max_value=50, value=st.session_state.get('num_floors', 5), key='num_floors')
-        existing_window = st.selectbox('Type of Existing Window', options=WINDOW_TYPES, index=WINDOW_TYPES.index(st.session_state.get('existing_window', 'Single pane')), key='existing_window')
+        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area_input')
+        st.session_state.building_area = building_area
+        
+        num_floors = st.number_input('Number of Floors', min_value=1, max_value=50, value=st.session_state.get('num_floors', 5), key='num_floors_input')
+        st.session_state.num_floors = num_floors
+        
+        window_types_list = WINDOW_TYPES
+        existing_window_idx = 0
+        if 'existing_window' in st.session_state and st.session_state.existing_window in window_types_list:
+            existing_window_idx = window_types_list.index(st.session_state.existing_window)
+        existing_window = st.selectbox('Type of Existing Window', options=window_types_list, index=existing_window_idx, key='existing_window_select')
+        st.session_state.existing_window = existing_window
     
     with col2:
-        csw_type = st.selectbox('Type of CSW Analyzed', options=CSW_TYPES, index=CSW_TYPES.index(st.session_state.get('csw_type', 'Double')), key='csw_type')
-        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=st.session_state.get('csw_area', 12000), step=100, key='csw_area')
+        csw_types_list = CSW_TYPES
+        csw_type_idx = 0
+        if 'csw_type' in st.session_state and st.session_state.csw_type in csw_types_list:
+            csw_type_idx = csw_types_list.index(st.session_state.csw_type)
+        csw_type = st.selectbox('Type of CSW Analyzed', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
+        st.session_state.csw_type = csw_type
+        
+        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=st.session_state.get('csw_area', 12000), step=100, key='csw_area_input')
+        st.session_state.csw_area = csw_area
         
         if csw_area > 0 and building_area > 0 and num_floors > 0:
             wwr = calculate_wwr(csw_area, building_area, num_floors)
@@ -445,14 +461,36 @@ elif st.session_state.step == 3:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.number_input('Electric Rate ($/kWh)', min_value=0.01, max_value=1.0, value=st.session_state.get('electric_rate', 0.12), step=0.01, format='%.3f', key='electric_rate')
-        st.number_input('Natural Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='gas_rate')
-        st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours')
+        electric_rate = st.number_input('Electric Rate ($/kWh)', min_value=0.01, max_value=1.0, value=st.session_state.get('electric_rate', 0.12), step=0.01, format='%.3f', key='electric_rate_input')
+        st.session_state.electric_rate = electric_rate
+        
+        gas_rate = st.number_input('Natural Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='gas_rate_input')
+        st.session_state.gas_rate = gas_rate
+        
+        operating_hours = st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours_input')
+        st.session_state.operating_hours = operating_hours
     
     with col2:
-        st.selectbox('HVAC System Type', options=HVAC_SYSTEMS, index=HVAC_SYSTEMS.index(st.session_state.get('hvac_system', HVAC_SYSTEMS[0])), key='hvac_system')
-        st.selectbox('Heating Fuel', options=HEATING_FUELS, index=HEATING_FUELS.index(st.session_state.get('heating_fuel', 'Electric')), key='heating_fuel')
-        st.selectbox('Cooling Installed?', options=COOLING_OPTIONS, index=COOLING_OPTIONS.index(st.session_state.get('cooling_installed', 'Yes')), key='cooling_installed')
+        hvac_systems_list = HVAC_SYSTEMS
+        hvac_idx = 0
+        if 'hvac_system' in st.session_state and st.session_state.hvac_system in hvac_systems_list:
+            hvac_idx = hvac_systems_list.index(st.session_state.hvac_system)
+        hvac_system = st.selectbox('HVAC System Type', options=hvac_systems_list, index=hvac_idx, key='hvac_system_select')
+        st.session_state.hvac_system = hvac_system
+        
+        heating_fuels_list = HEATING_FUELS
+        fuel_idx = 0
+        if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
+            fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
+        heating_fuel = st.selectbox('Heating Fuel', options=heating_fuels_list, index=fuel_idx, key='heating_fuel_select')
+        st.session_state.heating_fuel = heating_fuel
+        
+        cooling_options_list = COOLING_OPTIONS
+        cooling_idx = 0
+        if 'cooling_installed' in st.session_state and st.session_state.cooling_installed in cooling_options_list:
+            cooling_idx = cooling_options_list.index(st.session_state.cooling_installed)
+        cooling_installed = st.selectbox('Cooling Installed?', options=cooling_options_list, index=cooling_idx, key='cooling_installed_select')
+        st.session_state.cooling_installed = cooling_installed
     
     col_back, col_next = st.columns([1, 1])
     with col_back:
@@ -466,6 +504,17 @@ elif st.session_state.step == 3:
 
 elif st.session_state.step == 4:
     st.header('💡 Your Energy Savings Results')
+    
+    # Debug: Show what inputs we're using
+    with st.expander('📋 Debug: Input Values Being Used'):
+        st.write(f"**State:** {st.session_state.get('state', 'N/A')}")
+        st.write(f"**City:** {st.session_state.get('city', 'N/A')}")
+        st.write(f"**Building Area:** {st.session_state.get('building_area', 0):,} SF")
+        st.write(f"**CSW Area:** {st.session_state.get('csw_area', 0):,} SF")
+        st.write(f"**Number of Floors:** {st.session_state.get('num_floors', 0)}")
+        st.write(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}")
+        st.write(f"**HDD:** {st.session_state.get('hdd', 0):,}")
+        st.write(f"**CDD:** {st.session_state.get('cdd', 0):,}")
     
     inputs = {
         'state': st.session_state.get('state'),
