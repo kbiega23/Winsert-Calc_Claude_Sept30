@@ -1,6 +1,7 @@
 """
 CSW Savings Calculator - Streamlit Web App
 REGRESSION-BASED VERSION - Calculates dynamically for each city
+UPDATED: Fixed cooling multiplier logic for "Cooling Installed = No" scenarios
 """
 
 import streamlit as st
@@ -273,7 +274,16 @@ def calculate_savings(inputs):
     
     c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
     
-    w24 = 1.0 if cooling_installed == "Yes" else 0.0
+    # FIXED LOGIC: Use cool_mult_no_cooling when cooling is not installed
+    if cooling_installed == "Yes":
+        w24 = 1.0
+    else:
+        # Get the cooling multiplier from the regression data
+        # Interpolate between high and low hour values
+        cool_mult_high = row_high.get('cool_mult_no_cooling', 0.6644)
+        cool_mult_low = row_low.get('cool_mult_no_cooling', 0.6644)
+        w24 = interpolate_hours(operating_hours, cool_mult_high, cool_mult_low, q24, q25)
+    
     c32 = c32_base * w24
     
     baseline_row_high = find_baseline_eui_row(config_high)
