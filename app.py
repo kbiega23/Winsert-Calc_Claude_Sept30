@@ -439,7 +439,7 @@ elif st.session_state.step == 2:
         csw_type = st.selectbox('Type of CSW Analyzed', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
         st.session_state.csw_type = csw_type
         
-        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=st.session_state.get('csw_area', 12000), step=100, key='csw_area_input')
+        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='csw_area_input')
         st.session_state.csw_area = csw_area
         
         if csw_area > 0 and building_area > 0 and num_floors > 0:
@@ -572,6 +572,11 @@ elif st.session_state.step == 4:
                 st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
     
     if st.button('← Start Over'):
+        # Clear all session state except 'step'
+        keys_to_keep = []
+        keys_to_delete = [key for key in st.session_state.keys() if key not in keys_to_keep]
+        for key in keys_to_delete:
+            del st.session_state[key]
         st.session_state.step = 1
         st.rerun()
 
