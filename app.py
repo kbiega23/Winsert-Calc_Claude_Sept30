@@ -630,6 +630,26 @@ elif st.session_state.step == 4:
             )
             
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Prominent EUI Savings percentage below chart
+            st.markdown(
+                f"""
+                <div style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                            padding: 30px; 
+                            border-radius: 15px; 
+                            text-align: center;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                            margin-top: 15px;'>
+                    <h1 style='color: white; margin: 0; font-size: 3em; font-weight: bold;'>
+                        {results['percent_eui_savings']:.1f}%
+                    </h1>
+                    <p style='color: white; margin: 10px 0 0 0; font-size: 1.2em;'>
+                        Energy Use Intensity Reduction
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
         
         with col_savings:
             st.markdown('### 💰 Annual Cost Savings')
