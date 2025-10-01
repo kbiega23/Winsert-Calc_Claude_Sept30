@@ -1,49 +1,4 @@
-c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
-    
-    # Apply cooling multiplier based on whether cooling is installed
-    if cooling_installed == "Yes":
-        w24 = 1.0
-        c32 = c32_base * w24
-    else:
-        # When cooling is "No", use the cooling multiplier from regression data
-        # This represents savings from fans/ventilation even without dedicated cooling
-        w24 = row_high.get('cool_mult_no_cooling', 0.6644)
-        c32 = c32_base * w24def calculate_savings(inputs):
-    """Main calculation function using regression formulas"""
-    building_area = inputs['building_area']
-    csw_area = inputs['csw_area']
-    operating_hours = inputs['operating_hours']
-    num_floors = inputs['num_floors']
-    electric_rate = inputs['electric_rate']
-    gas_rate = inputs['gas_rate']
-    cooling_installed = inputs['cooling_installed']
-    heating_fuel = inputs['heating_fuel']
-    
-    hdd = inputs.get('hdd', 0)
-    cdd = inputs.get('cdd', 0)
-    
-    q24, q25 = calculate_q24_q25(operating_hours)
-    
-    config_high = build_lookup_config(inputs, q24)
-    config_low = build_lookup_config(inputs, q25)
-    
-    row_high = find_regression_row(config_high)
-    row_low = find_regression_row(config_low)
-    
-    if row_high is None or row_low is None:
-        st.error(f"⚠️ Could not find regression coefficients for configuration")
-        return None
-    
-    if heating_fuel == 'Natural Gas':
-        heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-        heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-        gas_savings_high = heating_high
-        gas_savings_low = heating_low
-        electric_heating_high = 0
-        electric_heating_low = 0
-    else:
-        electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-        electric_heating_low = calculate_from_regression(row"""
+"""
 CSW Savings Calculator - Streamlit Web App
 REGRESSION-BASED VERSION - Calculates dynamically for each city
 """
@@ -316,9 +271,16 @@ def calculate_savings(inputs):
         c31 = interpolate_hours(operating_hours, electric_heating_high, electric_heating_low, q24, q25)
         c33 = 0
     
-    c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
+   c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
     
-    w24 = 1.0 if cooling_installed == "Yes" else 0.0
+    # Apply cooling multiplier based on whether cooling is installed
+    if cooling_installed == "Yes":
+        w24 = 1.0
+    else:
+        # When cooling is "No", use the cooling multiplier from regression data
+        # This represents savings from fans/ventilation even without dedicated cooling
+        w24 = row_high.get('cool_mult_no_cooling', 0.6644)
+    
     c32 = c32_base * w24
     
     baseline_row_high = find_baseline_eui_row(config_high)
