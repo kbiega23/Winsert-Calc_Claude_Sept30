@@ -602,7 +602,7 @@ elif st.session_state.step == 4:
                 y = [baseline_eui, -savings_eui, new_eui],
                 text = [f"{baseline_eui:.1f}", f"−{savings_eui:.1f}", f"{new_eui:.1f}"],
                 textposition = "outside",
-                textfont = dict(size=14, family='Arial Black'),
+                textfont = dict(size=13, family='Arial'),
                 decreasing = {"marker":{"color":"#4A90A4"}},
                 increasing = {"marker":{"color":"#FF6B6B"}},
                 totals = {"marker":{"color":"#2C5F6F"}},
@@ -610,19 +610,21 @@ elif st.session_state.step == 4:
             ))
             
             fig.update_layout(
-                height=280,
+                height=300,
                 showlegend=False,
                 yaxis=dict(
                     title='kBtu/SF-yr',
-                    title_font=dict(size=12),
-                    gridcolor='#E0E0E0'
+                    title_font=dict(size=11),
+                    gridcolor='#E0E0E0',
+                    automargin=True
                 ),
                 xaxis=dict(
-                    title_font=dict(size=12)
+                    title_font=dict(size=11),
+                    automargin=True
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                margin=dict(t=10, b=40, l=60, r=20)
+                margin=dict(t=30, b=60, l=70, r=30)
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -698,7 +700,7 @@ elif st.session_state.step == 4:
             )
         
         st.markdown('---')
-        st.markdown('#### Energy Savings Breakdown')
+        st.markdown('<h4 style="text-align: center;">Energy Savings Breakdown</h4>', unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         with col1:
