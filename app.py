@@ -602,29 +602,29 @@ elif st.session_state.step == 4:
                 y = [baseline_eui, -savings_eui, new_eui],
                 text = [f"{baseline_eui:.1f}", f"−{savings_eui:.1f}", f"{new_eui:.1f}"],
                 textposition = "outside",
-                textfont = dict(size=13, family='Arial'),
-                decreasing = {"marker":{"color":"#4A90A4"}},
-                increasing = {"marker":{"color":"#FF6B6B"}},
-                totals = {"marker":{"color":"#2C5F6F"}},
-                connector = {"line":{"color":"rgb(63, 63, 63)"}},
+                textfont = dict(size=12),
+                decreasing = {"marker":{"color":"#FF9800", "line":{"color":"#F57C00", "width":2}}},
+                increasing = {"marker":{"color":"#D32F2F", "line":{"color":"#B71C1C", "width":2}}},
+                totals = {"marker":{"color":"#4CAF50", "line":{"color":"#388E3C", "width":2}}},
+                connector = {"line":{"color":"rgb(100, 100, 100)", "width":1}},
+                width = [0.5, 0.5, 0.5]
             ))
             
             fig.update_layout(
-                height=300,
+                height=320,
                 showlegend=False,
                 yaxis=dict(
                     title='kBtu/SF-yr',
                     title_font=dict(size=11),
                     gridcolor='#E0E0E0',
-                    automargin=True
+                    rangemode='tozero'
                 ),
                 xaxis=dict(
-                    title_font=dict(size=11),
-                    automargin=True
+                    title_font=dict(size=11)
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                margin=dict(t=30, b=60, l=70, r=30)
+                margin=dict(t=50, b=80, l=60, r=20)
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -637,9 +637,12 @@ elif st.session_state.step == 4:
                             text-align: center;
                             box-shadow: 0 3px 5px rgba(0,0,0,0.1);
                             margin-top: 10px;'>
-                    <h2 style='color: white; margin: 0; font-size: 2.2em; font-weight: bold;'>
+                    <h2 style='color: white; margin: 0 0 8px 0; font-size: 2.2em; font-weight: bold;'>
                         {results['percent_eui_savings']:.1f}%, {results['total_savings_kbtu_sf']:.1f} kBtu/SF-yr
                     </h2>
+                    <p style='color: white; margin: 0; font-size: 0.85em; opacity: 0.95;'>
+                        EUI Savings
+                    </p>
                 </div>
                 """,
                 unsafe_allow_html=True
