@@ -381,9 +381,23 @@ if st.session_state.step == 1:
     col1, col2 = st.columns(2)
     
     with col1:
-        state = st.selectbox('Select State', options=sorted(WEATHER_DATA_BY_STATE.keys()), key='state')
+        # Use index to persist selection
+        state_options = sorted(WEATHER_DATA_BY_STATE.keys())
+        default_state_idx = 0
+        if 'state' in st.session_state and st.session_state.state in state_options:
+            default_state_idx = state_options.index(st.session_state.state)
+        
+        state = st.selectbox('Select State', options=state_options, index=default_state_idx, key='state_select')
+        st.session_state.state = state
+        
         if state:
-            city = st.selectbox('Select City', options=sorted(WEATHER_DATA_BY_STATE[state].keys()), key='city')
+            city_options = sorted(WEATHER_DATA_BY_STATE[state].keys())
+            default_city_idx = 0
+            if 'city' in st.session_state and st.session_state.city in city_options:
+                default_city_idx = city_options.index(st.session_state.city)
+            
+            city = st.selectbox('Select City', options=city_options, index=default_city_idx, key='city_select')
+            st.session_state.city = city
     
     if state and city:
         with col2:
@@ -391,8 +405,8 @@ if st.session_state.step == 1:
             st.info(f"**Location HDD (Base 65):** {weather['HDD']:,}")
             st.info(f"**Location CDD (Base 65):** {weather['CDD']:,}")
             # Store HDD/CDD in session state for later use
-            st.session_state['hdd'] = weather['HDD']
-            st.session_state['cdd'] = weather['CDD']
+            st.session_state.hdd = weather['HDD']
+            st.session_state.cdd = weather['CDD']
     
     if st.button('Next →', type='primary'):
         if state and city:
