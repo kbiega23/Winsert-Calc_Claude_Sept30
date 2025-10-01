@@ -601,10 +601,10 @@ elif st.session_state.step == 4:
                 x = ["Baseline EUI<br>Before Winsert", "Savings with<br>Winsert", "EUI After<br>Winsert"],
                 y = [baseline_eui, -savings_eui, new_eui],
                 text = [f"{baseline_eui:.1f}", f"−{savings_eui:.1f}", f"{new_eui:.1f}"],
-                textposition = "outside",
-                textfont = dict(size=12),
-                decreasing = {"marker":{"color":"#FF9800", "line":{"color":"#F57C00", "width":2}}},
+                textposition = ["inside", "outside", "inside"],
+                textfont = dict(size=12, color="white"),
                 increasing = {"marker":{"color":"#D32F2F", "line":{"color":"#B71C1C", "width":2}}},
+                decreasing = {"marker":{"color":"#FF9800", "line":{"color":"#F57C00", "width":2}}},
                 totals = {"marker":{"color":"#4CAF50", "line":{"color":"#388E3C", "width":2}}},
                 connector = {"line":{"color":"rgb(100, 100, 100)", "width":1}},
                 width = [0.5, 0.5, 0.5]
@@ -624,7 +624,7 @@ elif st.session_state.step == 4:
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                margin=dict(t=50, b=80, l=60, r=20)
+                margin=dict(t=30, b=80, l=60, r=20)
             )
             
             st.plotly_chart(fig, use_container_width=True)
