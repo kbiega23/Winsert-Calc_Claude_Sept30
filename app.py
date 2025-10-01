@@ -5,16 +5,21 @@ REGRESSION-BASED VERSION - Calculates dynamically for each city
 
 import streamlit as st
 import pandas as pd
+import os
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
 st.set_page_config(
-    page_title="CSW Savings Calculator",
+    page_title="Winsert Savings Calculator",
     page_icon="🏢",
     layout="wide"
 )
+
+# Optional: Display logo if file exists
+if os.path.exists('logo.png'):
+    st.image('logo.png', width=200)
 
 if 'step' not in st.session_state:
     st.session_state.step = 1
@@ -361,7 +366,7 @@ def calculate_savings(inputs):
 # UI
 # ============================================================================
 
-st.title('🏢 Commercial Window Savings Calculator')
+st.title('🏢 Winsert Savings Calculator')
 st.markdown('### Office Buildings')
 st.markdown('---')
 
@@ -441,7 +446,7 @@ elif st.session_state.step == 2:
         csw_type = st.selectbox('Secondary Window Product', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
         st.session_state.csw_type = csw_type
         
-        csw_area = st.number_input('Total Sq. Ft of Secondary Windows Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='csw_area_input')
+        csw_area = st.number_input('Total Sq. Ft of Secondary Windows Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='csw_area_input', help='Check window to wall ratio. Typical values are between 10%-50%.')
         st.session_state.csw_area = csw_area
         
         if csw_area > 0 and building_area > 0 and num_floors > 0:
@@ -653,6 +658,3 @@ with st.sidebar:
             st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
             st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
             st.markdown(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}/yr")
-        if WEATHER_DATA_BY_STATE and not REGRESSION_COEFFICIENTS.empty:
-            st.markdown('---')
-            st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities | ✅ Regression-based')
