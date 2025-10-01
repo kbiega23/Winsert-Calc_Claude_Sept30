@@ -271,16 +271,9 @@ def calculate_savings(inputs):
         c31 = interpolate_hours(operating_hours, electric_heating_high, electric_heating_low, q24, q25)
         c33 = 0
     
-   c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
+    c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
     
-    # Apply cooling multiplier based on whether cooling is installed
-    if cooling_installed == "Yes":
-        w24 = 1.0
-    else:
-        # When cooling is "No", use the cooling multiplier from regression data
-        # This represents savings from fans/ventilation even without dedicated cooling
-        w24 = row_high.get('cool_mult_no_cooling', 0.6644)
-    
+    w24 = 1.0 if cooling_installed == "Yes" else 0.0
     c32 = c32_base * w24
     
     baseline_row_high = find_baseline_eui_row(config_high)
