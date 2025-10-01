@@ -32,8 +32,8 @@ HVAC_SYSTEMS = [
 
 HEATING_FUELS = ['Electric', 'Natural Gas', 'None']
 COOLING_OPTIONS = ['Yes', 'No']
-WINDOW_TYPES = ['Single pane', 'Double pane', 'Double pane, low-e']
-CSW_TYPES = ['Double', 'Triple', 'Quad']
+WINDOW_TYPES = ['Single pane', 'Double pane']  # From Excel Lists!A2:A3
+CSW_TYPES = ['Single', 'Double']  # For Office buildings only - Lists!BB2:BB3
 
 # ============================================================================
 # LOAD DATA FROM CSV FILES
