@@ -439,10 +439,18 @@ elif st.session_state.step == 2:
         st.session_state.existing_window = existing_window
     
     with col2:
-        csw_types_list = CSW_TYPES
-        csw_type_idx = 0
-        if 'csw_type' in st.session_state and st.session_state.csw_type in csw_types_list:
-            csw_type_idx = csw_types_list.index(st.session_state.csw_type)
+        # Filter CSW types based on existing window selection
+        if existing_window == 'Double pane':
+            # Only Winsert Lite available for double pane existing windows
+            csw_types_list = ['Winsert Lite']
+            csw_type_idx = 0
+        else:
+            # Both options available for single pane
+            csw_types_list = CSW_TYPES
+            csw_type_idx = 0
+            if 'csw_type' in st.session_state and st.session_state.csw_type in csw_types_list:
+                csw_type_idx = csw_types_list.index(st.session_state.csw_type)
+        
         csw_type = st.selectbox('Secondary Window Product', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
         st.session_state.csw_type = csw_type
         
@@ -485,10 +493,18 @@ elif st.session_state.step == 3:
         hvac_system = st.selectbox('HVAC System Type', options=hvac_systems_list, index=hvac_idx, key='hvac_system_select')
         st.session_state.hvac_system = hvac_system
         
-        heating_fuels_list = HEATING_FUELS
-        fuel_idx = 0
-        if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
-            fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
+        # Filter heating fuel options based on HVAC system selection
+        if hvac_system == 'Packaged VAV with electric reheat':
+            # Only Electric available for this HVAC type
+            heating_fuels_list = ['Electric']
+            fuel_idx = 0
+        else:
+            # All options available for other HVAC types
+            heating_fuels_list = HEATING_FUELS
+            fuel_idx = 0
+            if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
+                fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
+        
         heating_fuel = st.selectbox('Heating Fuel', options=heating_fuels_list, index=fuel_idx, key='heating_fuel_select')
         st.session_state.heating_fuel = heating_fuel
         
