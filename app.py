@@ -33,7 +33,8 @@ HVAC_SYSTEMS = [
 HEATING_FUELS = ['Electric', 'Natural Gas', 'None']
 COOLING_OPTIONS = ['Yes', 'No']
 WINDOW_TYPES = ['Single pane', 'Double pane']  # From Excel Lists!A2:A3
-CSW_TYPES = ['Single', 'Double']  # For Office buildings only - Lists!BB2:BB3
+CSW_TYPES = ['Winsert Lite', 'Winsert Plus']  # Product names for Single and Double
+CSW_TYPE_MAPPING = {'Winsert Lite': 'Single', 'Winsert Plus': 'Double'}  # Map to regression data
 
 # ============================================================================
 # LOAD DATA FROM CSV FILES
@@ -100,8 +101,9 @@ def build_lookup_config(inputs, hours):
     else:
         base = 'Double'
     
-    # CSW type
-    csw_type = inputs['csw_type']
+    # CSW type - map product name to regression data name
+    csw_product = inputs['csw_type']
+    csw_type = CSW_TYPE_MAPPING.get(csw_product, csw_product)
     
     # Size
     if inputs['building_area'] > 30000 and inputs['hvac_system'] == 'Built-up VAV with hydronic reheat':
@@ -418,10 +420,10 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     
     with col1:
-        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area_input')
+        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area_input', help="Must be between 15,000 and 500,000 SF")
         st.session_state.building_area = building_area
         
-        num_floors = st.number_input('Number of Floors', min_value=1, max_value=50, value=st.session_state.get('num_floors', 5), key='num_floors_input')
+        num_floors = st.number_input('Number of Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='num_floors_input', help="Must be between 1 and 100 floors")
         st.session_state.num_floors = num_floors
         
         window_types_list = WINDOW_TYPES
@@ -436,10 +438,10 @@ elif st.session_state.step == 2:
         csw_type_idx = 0
         if 'csw_type' in st.session_state and st.session_state.csw_type in csw_types_list:
             csw_type_idx = csw_types_list.index(st.session_state.csw_type)
-        csw_type = st.selectbox('Type of CSW Analyzed', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
+        csw_type = st.selectbox('Secondary Window Product', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
         st.session_state.csw_type = csw_type
         
-        csw_area = st.number_input('Sq.ft. of CSW Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='csw_area_input')
+        csw_area = st.number_input('Total Sq. Ft of Secondary Windows Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='csw_area_input')
         st.session_state.csw_area = csw_area
         
         if csw_area > 0 and building_area > 0 and num_floors > 0:
@@ -467,7 +469,7 @@ elif st.session_state.step == 3:
         gas_rate = st.number_input('Natural Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='gas_rate_input')
         st.session_state.gas_rate = gas_rate
         
-        operating_hours = st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours_input')
+        operating_hours = st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours_input', help="Must be between 1,980 and 8,760 hours")
         st.session_state.operating_hours = operating_hours
     
     with col2:
@@ -505,17 +507,6 @@ elif st.session_state.step == 3:
 elif st.session_state.step == 4:
     st.header('💡 Your Energy Savings Results')
     
-    # Debug: Show what inputs we're using
-    with st.expander('📋 Debug: Input Values Being Used'):
-        st.write(f"**State:** {st.session_state.get('state', 'N/A')}")
-        st.write(f"**City:** {st.session_state.get('city', 'N/A')}")
-        st.write(f"**Building Area:** {st.session_state.get('building_area', 0):,} SF")
-        st.write(f"**CSW Area:** {st.session_state.get('csw_area', 0):,} SF")
-        st.write(f"**Number of Floors:** {st.session_state.get('num_floors', 0)}")
-        st.write(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}")
-        st.write(f"**HDD:** {st.session_state.get('hdd', 0):,}")
-        st.write(f"**CDD:** {st.session_state.get('cdd', 0):,}")
-    
     inputs = {
         'state': st.session_state.get('state'),
         'city': st.session_state.get('city'),
@@ -528,7 +519,7 @@ elif st.session_state.step == 4:
         'heating_fuel': st.session_state.get('heating_fuel', 'Electric'),
         'cooling_installed': st.session_state.get('cooling_installed', 'Yes'),
         'existing_window': st.session_state.get('existing_window', 'Single pane'),
-        'csw_type': st.session_state.get('csw_type', 'Double'),
+        'csw_type': st.session_state.get('csw_type', 'Winsert Lite'),
         'csw_area': st.session_state.get('csw_area', 12000),
         'electric_rate': st.session_state.get('electric_rate', 0.12),
         'gas_rate': st.session_state.get('gas_rate', 0.80)
@@ -581,17 +572,87 @@ elif st.session_state.step == 4:
         st.rerun()
 
 with st.sidebar:
-    st.markdown('### 📝 Summary')
-    if st.session_state.step > 1:
-        st.markdown(f"**Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
-    if st.session_state.step > 2:
-        st.markdown(f"**Building:** {st.session_state.get('building_area', 0):,} SF, {st.session_state.get('num_floors', 0)} floors")
-        st.markdown(f"**Windows:** {st.session_state.get('existing_window', 'N/A')} → {st.session_state.get('csw_type', 'N/A')} CSW")
-        st.markdown(f"**CSW Area:** {st.session_state.get('csw_area', 0):,} SF")
-    if st.session_state.step > 3:
-        st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
-        st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
-        st.markdown(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}/yr")
-    if WEATHER_DATA_BY_STATE and not REGRESSION_COEFFICIENTS.empty:
+    if st.session_state.step == 4:
+        st.markdown('### 🎛️ Adjust Inputs')
+        st.markdown('Modify values below to see updated results:')
         st.markdown('---')
-        st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities | ✅ Regression-based')
+        
+        # Location (read-only display)
+        st.markdown(f"**📍 Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
+        st.markdown('---')
+        
+        # Editable Building Envelope
+        st.markdown('**🏢 Building Envelope**')
+        building_area = st.number_input('Building Area (SF)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='sidebar_building_area')
+        if building_area != st.session_state.get('building_area'):
+            st.session_state.building_area = building_area
+            st.rerun()
+        
+        num_floors = st.number_input('Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='sidebar_num_floors')
+        if num_floors != st.session_state.get('num_floors'):
+            st.session_state.num_floors = num_floors
+            st.rerun()
+        
+        existing_window = st.selectbox('Existing Window', options=WINDOW_TYPES, index=WINDOW_TYPES.index(st.session_state.get('existing_window', 'Single pane')), key='sidebar_existing_window')
+        if existing_window != st.session_state.get('existing_window'):
+            st.session_state.existing_window = existing_window
+            st.rerun()
+        
+        csw_type = st.selectbox('Product', options=CSW_TYPES, index=CSW_TYPES.index(st.session_state.get('csw_type', 'Winsert Lite')), key='sidebar_csw_type')
+        if csw_type != st.session_state.get('csw_type'):
+            st.session_state.csw_type = csw_type
+            st.rerun()
+        
+        csw_area = st.number_input('Secondary Window Area (SF)', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='sidebar_csw_area')
+        if csw_area != st.session_state.get('csw_area'):
+            st.session_state.csw_area = csw_area
+            st.rerun()
+        
+        st.markdown('---')
+        
+        # Editable HVAC & Utility
+        st.markdown('**⚙️ HVAC & Utility**')
+        operating_hours = st.number_input('Operating Hours/yr', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='sidebar_operating_hours')
+        if operating_hours != st.session_state.get('operating_hours'):
+            st.session_state.operating_hours = operating_hours
+            st.rerun()
+        
+        hvac_system = st.selectbox('HVAC System', options=HVAC_SYSTEMS, index=HVAC_SYSTEMS.index(st.session_state.get('hvac_system', HVAC_SYSTEMS[0])), key='sidebar_hvac_system')
+        if hvac_system != st.session_state.get('hvac_system'):
+            st.session_state.hvac_system = hvac_system
+            st.rerun()
+        
+        heating_fuel = st.selectbox('Heating Fuel', options=HEATING_FUELS, index=HEATING_FUELS.index(st.session_state.get('heating_fuel', 'Electric')), key='sidebar_heating_fuel')
+        if heating_fuel != st.session_state.get('heating_fuel'):
+            st.session_state.heating_fuel = heating_fuel
+            st.rerun()
+        
+        cooling_installed = st.selectbox('Cooling?', options=COOLING_OPTIONS, index=COOLING_OPTIONS.index(st.session_state.get('cooling_installed', 'Yes')), key='sidebar_cooling_installed')
+        if cooling_installed != st.session_state.get('cooling_installed'):
+            st.session_state.cooling_installed = cooling_installed
+            st.rerun()
+        
+        electric_rate = st.number_input('Electric Rate ($/kWh)', min_value=0.01, max_value=1.0, value=st.session_state.get('electric_rate', 0.12), step=0.01, format='%.3f', key='sidebar_electric_rate')
+        if electric_rate != st.session_state.get('electric_rate'):
+            st.session_state.electric_rate = electric_rate
+            st.rerun()
+        
+        gas_rate = st.number_input('Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='sidebar_gas_rate')
+        if gas_rate != st.session_state.get('gas_rate'):
+            st.session_state.gas_rate = gas_rate
+            st.rerun()
+    else:
+        st.markdown('### 📝 Summary')
+        if st.session_state.step > 1:
+            st.markdown(f"**Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
+        if st.session_state.step > 2:
+            st.markdown(f"**Building:** {st.session_state.get('building_area', 0):,} SF, {st.session_state.get('num_floors', 0)} floors")
+            st.markdown(f"**Windows:** {st.session_state.get('existing_window', 'N/A')} → {st.session_state.get('csw_type', 'N/A')}")
+            st.markdown(f"**Secondary Window Area:** {st.session_state.get('csw_area', 0):,} SF")
+        if st.session_state.step > 3:
+            st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
+            st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
+            st.markdown(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}/yr")
+        if WEATHER_DATA_BY_STATE and not REGRESSION_COEFFICIENTS.empty:
+            st.markdown('---')
+            st.markdown(f'**Status:** ✅ {len(WEATHER_DATA_BY_STATE)} states | ✅ 874 cities | ✅ Regression-based')
