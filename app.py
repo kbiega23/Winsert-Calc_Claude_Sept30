@@ -363,14 +363,14 @@ def calculate_savings(inputs):
 # UI
 # ============================================================================
 
-st.title('🏢 Winsert Savings Calculator')
-st.markdown('### Office Buildings')
-
-# Display logo next to title if it exists
-col_logo, col_title = st.columns([1, 4])
+# Header with logo and title
+col_logo, col_title = st.columns([1, 5])
 with col_logo:
     if os.path.exists('logo.png'):
-        st.image('logo.png', width=150)
+        st.image('logo.png', width=120)
+with col_title:
+    st.title('Winsert Savings Calculator')
+    st.markdown('### Office Buildings')
 
 st.markdown('---')
 
