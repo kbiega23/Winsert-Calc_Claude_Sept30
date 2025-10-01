@@ -6,6 +6,7 @@ REGRESSION-BASED VERSION - Calculates dynamically for each city
 import streamlit as st
 import pandas as pd
 import os
+import plotly.graph_objects as go
 
 # ============================================================================
 # CONFIGURATION
@@ -16,10 +17,6 @@ st.set_page_config(
     page_icon="🏢",
     layout="wide"
 )
-
-# Optional: Display logo if file exists
-if os.path.exists('logo.png'):
-    st.image('logo.png', width=200)
 
 if 'step' not in st.session_state:
     st.session_state.step = 1
@@ -368,6 +365,13 @@ def calculate_savings(inputs):
 
 st.title('🏢 Winsert Savings Calculator')
 st.markdown('### Office Buildings')
+
+# Display logo next to title if it exists
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    if os.path.exists('logo.png'):
+        st.image('logo.png', width=150)
+
 st.markdown('---')
 
 # Check if data loaded
@@ -550,47 +554,190 @@ elif st.session_state.step == 4:
     
     if results:
         st.success('✅ Calculation Complete!')
-        st.markdown('### 🎯 Primary Result')
-        st.metric('Energy Use Intensity (EUI) Savings', f"{results['percent_eui_savings']:.1f}%", delta="Reduction")
         
+        # Create two main columns: chart on left, cost savings on right
+        col_chart, col_savings = st.columns([1.2, 1])
+        
+        with col_chart:
+            st.markdown('### 📊 Energy Use Intensity (EUI) Reduction')
+            
+            # Create stacked bar chart for EUI
+            baseline_eui = results['baseline_eui']
+            new_eui = results['new_eui']
+            savings_eui = results['total_savings_kbtu_sf']
+            
+            fig = go.Figure()
+            
+            # Baseline bar
+            fig.add_trace(go.Bar(
+                name='Baseline EUI',
+                x=['Before Secondary Windows'],
+                y=[baseline_eui],
+                marker_color='#FF6B6B',
+                text=[f"{baseline_eui:.1f}<br>kBtu/SF-yr"],
+                textposition='inside',
+                textfont=dict(size=14, color='white', family='Arial Black'),
+                hovertemplate='<b>Baseline EUI</b><br>%{y:.2f} kBtu/SF-yr<extra></extra>'
+            ))
+            
+            # New EUI bar (stacked)
+            fig.add_trace(go.Bar(
+                name='New EUI',
+                x=['After Secondary Windows'],
+                y=[new_eui],
+                marker_color='#4ECDC4',
+                text=[f"{new_eui:.1f}<br>kBtu/SF-yr"],
+                textposition='inside',
+                textfont=dict(size=14, color='white', family='Arial Black'),
+                hovertemplate='<b>New EUI</b><br>%{y:.2f} kBtu/SF-yr<extra></extra>'
+            ))
+            
+            # Savings portion (on top of new EUI)
+            fig.add_trace(go.Bar(
+                name='EUI Savings',
+                x=['After Secondary Windows'],
+                y=[savings_eui],
+                marker_color='#95E1D3',
+                text=[f"−{savings_eui:.1f}<br>({results['percent_eui_savings']:.1f}%)"],
+                textposition='inside',
+                textfont=dict(size=14, color='#2C3E50', family='Arial Black'),
+                hovertemplate='<b>EUI Savings</b><br>%{y:.2f} kBtu/SF-yr<br>(%{text})<extra></extra>'
+            ))
+            
+            fig.update_layout(
+                barmode='stack',
+                height=400,
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=12)
+                ),
+                yaxis=dict(
+                    title='Energy Use Intensity (kBtu/SF-yr)',
+                    titlefont=dict(size=14),
+                    gridcolor='#E0E0E0'
+                ),
+                xaxis=dict(
+                    titlefont=dict(size=14)
+                ),
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                margin=dict(t=80, b=60, l=60, r=20)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col_savings:
+            st.markdown('### 💰 Annual Cost Savings')
+            
+            # Large, prominent total savings
+            st.markdown(
+                f"""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            padding: 30px; 
+                            border-radius: 15px; 
+                            text-align: center;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                            margin-bottom: 20px;'>
+                    <h1 style='color: white; margin: 0; font-size: 3em; font-weight: bold;'>
+                        ${results['total_cost_savings']:,.0f}
+                    </h1>
+                    <p style='color: #E0E0E0; margin: 10px 0 0 0; font-size: 1.2em;'>
+                        Total Annual Savings
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Breakdown of savings
+            if results['electric_cost_savings'] > 0:
+                st.markdown(
+                    f"""
+                    <div style='background: #FFF3E0; 
+                                padding: 20px; 
+                                border-radius: 10px; 
+                                margin-bottom: 15px;
+                                border-left: 5px solid #FF9800;'>
+                        <h3 style='margin: 0 0 10px 0; color: #E65100;'>⚡ Electric Savings</h3>
+                        <p style='font-size: 2em; margin: 0; font-weight: bold; color: #E65100;'>
+                            ${results['electric_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
+                        </p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            if results['gas_cost_savings'] > 0:
+                st.markdown(
+                    f"""
+                    <div style='background: #E3F2FD; 
+                                padding: 20px; 
+                                border-radius: 10px;
+                                border-left: 5px solid #2196F3;'>
+                        <h3 style='margin: 0 0 10px 0; color: #0D47A1;'>🔥 Natural Gas Savings</h3>
+                        <p style='font-size: 2em; margin: 0; font-weight: bold; color: #0D47A1;'>
+                            ${results['gas_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
+                        </p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+        
+        # Energy savings details below the main visualization
         st.markdown('---')
-        st.markdown('### 💰 Annual Savings')
+        st.markdown('### ⚡ Energy Savings Breakdown')
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric('Electric Energy', f'{results["electric_savings_kwh"]:,.0f} kWh/yr')
-            st.metric('Gas Energy', f'{results["gas_savings_therms"]:,.0f} therms/yr')
+            st.metric('Electric Energy Savings', f'{results["electric_savings_kwh"]:,.0f} kWh/yr', 
+                     help='Annual electricity saved by installing secondary windows')
         with col2:
-            st.metric('Electric Cost', f'${results["electric_cost_savings"]:,.2f}/yr')
-            st.metric('Gas Cost', f'${results["gas_cost_savings"]:,.2f}/yr')
+            st.metric('Natural Gas Savings', f'{results["gas_savings_therms"]:,.0f} therms/yr',
+                     help='Annual natural gas saved by installing secondary windows')
         with col3:
-            st.metric('Savings Intensity', f'{results["total_savings_kbtu_sf"]:.2f} kBtu/SF-yr')
-            st.metric('Total Cost', f'${results["total_cost_savings"]:,.2f}/yr')
+            st.metric('Total Energy Savings', f'{results["total_savings_kbtu_sf"]:.2f} kBtu/SF-yr',
+                     help='Total energy savings per square foot of building area per year')
         
-        st.markdown('---')
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric('Baseline EUI', f'{results["baseline_eui"]:.2f} kBtu/SF-yr')
-        with col2:
-            st.metric('New EUI', f'{results["new_eui"]:.2f} kBtu/SF-yr')
-        
-        with st.expander('🔍 Calculation Details'):
-            st.write(f"**Electric Heating:** {results['heating_per_sf']:.4f} kWh/SF-CSW")
-            st.write(f"**Cooling & Fans:** {results['cooling_per_sf']:.4f} kWh/SF-CSW")
-            st.write(f"**Gas Heating:** {results['gas_per_sf']:.4f} therms/SF-CSW")
-            st.write(f"**HDD:** {results['hdd']:,}")
-            st.write(f"**CDD:** {results['cdd']:,}")
-            if results['wwr']:
-                st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
+        # Expandable calculation details
+        with st.expander('🔍 View Detailed Calculations'):
+            st.markdown('#### Performance Metrics')
+            detail_col1, detail_col2 = st.columns(2)
+            with detail_col1:
+                st.write(f"**Baseline EUI:** {results['baseline_eui']:.2f} kBtu/SF-yr")
+                st.write(f"**New EUI:** {results['new_eui']:.2f} kBtu/SF-yr")
+                st.write(f"**EUI Reduction:** {results['percent_eui_savings']:.1f}%")
+            with detail_col2:
+                st.write(f"**Electric Heating Savings:** {results['heating_per_sf']:.4f} kWh/SF-CSW")
+                st.write(f"**Cooling & Fans Savings:** {results['cooling_per_sf']:.4f} kWh/SF-CSW")
+                st.write(f"**Gas Heating Savings:** {results['gas_per_sf']:.4f} therms/SF-CSW")
+            
+            st.markdown('#### Project Details')
+            detail_col3, detail_col4 = st.columns(2)
+            with detail_col3:
+                st.write(f"**Location:** {inputs['city']}, {inputs['state']}")
+                st.write(f"**Heating Degree Days:** {results['hdd']:,}")
+                st.write(f"**Cooling Degree Days:** {results['cdd']:,}")
+            with detail_col4:
+                st.write(f"**Building Area:** {inputs['building_area']:,} SF")
+                st.write(f"**Secondary Window Area:** {inputs['csw_area']:,} SF")
+                if results['wwr']:
+                    st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
     
-    if st.button('← Start Over'):
-        # Clear all session state except 'step'
-        keys_to_keep = []
-        keys_to_delete = [key for key in st.session_state.keys() if key not in keys_to_keep]
-        for key in keys_to_delete:
-            del st.session_state[key]
-        st.session_state.step = 1
-        st.rerun()
+    col_back, col_space = st.columns([1, 3])
+    with col_back:
+        if st.button('← Start Over', type='secondary'):
+            # Clear all session state except 'step'
+            keys_to_keep = []
+            keys_to_delete = [key for key in st.session_state.keys() if key not in keys_to_keep]
+            for key in keys_to_delete:
+                del st.session_state[key]
+            st.session_state.step = 1
+            st.rerun()
 
 with st.sidebar:
     if st.session_state.step == 4:
