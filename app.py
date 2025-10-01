@@ -1,7 +1,7 @@
 """
 CSW Savings Calculator - Streamlit Web App
 REGRESSION-BASED VERSION - Calculates dynamically for each city
-UPDATED: Fixed cooling multiplier logic for "Cooling Installed = No" scenarios
+UPDATED: Fixed cooling multiplier logic - uses CDD-based polynomial calculation
 """
 
 import streamlit as st
@@ -38,6 +38,23 @@ COOLING_OPTIONS = ['Yes', 'No']
 WINDOW_TYPES = ['Single pane', 'Double pane']
 CSW_TYPES = ['Winsert Lite', 'Winsert Plus']
 CSW_TYPE_MAPPING = {'Winsert Lite': 'Single', 'Winsert Plus': 'Double'}
+
+# Cooling adjustment polynomial coefficients (from Regression List row 80 & 81)
+# Formula: w24 = a + b*CDD + c*CDD² + d*CDD³
+COOLING_MULT_COEFFICIENTS = {
+    'Mid': {
+        'a': 0.6972151451662,
+        'b': -0.0001078176371,
+        'c': 3.60507e-8,
+        'd': -6.4e-12
+    },
+    'Large': {
+        'a': 0.779295373677,
+        'b': 0.000049630331,
+        'c': -2.8839e-8,
+        'd': 1e-12
+    }
+}
 
 # ============================================================================
 # LOAD DATA FROM CSV FILES
@@ -92,6 +109,20 @@ def calculate_wwr(csw_area, building_area, num_floors):
     floor_area = building_area / num_floors
     wall_area = (floor_area ** 0.5) * 4 * 15 * num_floors
     return csw_area / wall_area if wall_area > 0 else 0
+
+def calculate_cooling_multiplier(cdd, building_size):
+    """
+    Calculate cooling adjustment multiplier based on CDD using polynomial regression
+    Formula: w24 = a + b*CDD + c*CDD² + d*CDD³
+    This matches the Excel 'Cool_adjust' calculation from Savings Lookup sheet
+    """
+    coeffs = COOLING_MULT_COEFFICIENTS[building_size]
+    a, b, c, d = coeffs['a'], coeffs['b'], coeffs['c'], coeffs['d']
+    
+    multiplier = a + b * cdd + c * (cdd ** 2) + d * (cdd ** 3)
+    
+    # Ensure multiplier stays within reasonable bounds
+    return max(0.0, min(1.0, multiplier))
 
 def build_lookup_config(inputs, hours):
     """Build configuration for finding regression row"""
@@ -274,15 +305,14 @@ def calculate_savings(inputs):
     
     c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
     
-    # FIXED LOGIC: Use cool_mult_no_cooling when cooling is not installed
+    # FIXED LOGIC: Calculate cooling multiplier using CDD-based polynomial
     if cooling_installed == "Yes":
         w24 = 1.0
     else:
-        # Get the cooling multiplier from the regression data
-        # Interpolate between high and low hour values
-        cool_mult_high = row_high.get('cool_mult_no_cooling', 0.6644)
-        cool_mult_low = row_low.get('cool_mult_no_cooling', 0.6644)
-        w24 = interpolate_hours(operating_hours, cool_mult_high, cool_mult_low, q24, q25)
+        # Use CDD-based polynomial regression to calculate the cooling multiplier
+        # This matches Excel's 'Cool_adjust' calculation
+        building_size = config_high['size']  # 'Mid' or 'Large'
+        w24 = calculate_cooling_multiplier(cdd, building_size)
     
     c32 = c32_base * w24
     
