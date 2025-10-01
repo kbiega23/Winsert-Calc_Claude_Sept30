@@ -34,9 +34,9 @@ HVAC_SYSTEMS = [
 
 HEATING_FUELS = ['Electric', 'Natural Gas', 'None']
 COOLING_OPTIONS = ['Yes', 'No']
-WINDOW_TYPES = ['Single pane', 'Double pane']  # From Excel Lists!A2:A3
-CSW_TYPES = ['Winsert Lite', 'Winsert Plus']  # Product names for Single and Double
-CSW_TYPE_MAPPING = {'Winsert Lite': 'Single', 'Winsert Plus': 'Double'}  # Map to regression data
+WINDOW_TYPES = ['Single pane', 'Double pane']
+CSW_TYPES = ['Winsert Lite', 'Winsert Plus']
+CSW_TYPE_MAPPING = {'Winsert Lite': 'Single', 'Winsert Plus': 'Double'}
 
 # ============================================================================
 # LOAD DATA FROM CSV FILES
@@ -93,27 +93,20 @@ def calculate_wwr(csw_area, building_area, num_floors):
     return csw_area / wall_area if wall_area > 0 else 0
 
 def build_lookup_config(inputs, hours):
-    """
-    Build configuration for finding regression row
-    Returns dict with base, csw, size, hvac_fuel, fuel, hours
-    """
-    # Base window type
+    """Build configuration for finding regression row"""
     if inputs['existing_window'] == 'Single pane':
         base = 'Single'
     else:
         base = 'Double'
     
-    # CSW type - map product name to regression data name
     csw_product = inputs['csw_type']
     csw_type = CSW_TYPE_MAPPING.get(csw_product, csw_product)
     
-    # Size
     if inputs['building_area'] > 30000 and inputs['hvac_system'] == 'Built-up VAV with hydronic reheat':
         size = 'Large'
     else:
         size = 'Mid'
     
-    # HVAC System Type
     heating_fuel = inputs['heating_fuel']
     if size == 'Mid':
         if heating_fuel in ['Electric', 'None']:
@@ -123,7 +116,6 @@ def build_lookup_config(inputs, hours):
     else:
         hvac_fuel = 'VAV'
     
-    # Fuel type
     fuel = 'Electric' if heating_fuel == 'None' else heating_fuel
     
     return {
@@ -140,7 +132,6 @@ def find_regression_row(config):
     if REGRESSION_COEFFICIENTS.empty:
         return None
     
-    # Filter by configuration
     mask = (
         (REGRESSION_COEFFICIENTS['base'] == config['base']) &
         (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
@@ -149,7 +140,6 @@ def find_regression_row(config):
         (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
     )
     
-    # For fuel, handle NaN values
     if pd.notna(config['fuel']):
         mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
     
@@ -165,14 +155,11 @@ def find_baseline_eui_row(config):
     if REGRESSION_COEFFICIENTS.empty:
         return None
     
-    # Baseline EUI rows have csw='N/A' and specific patterns
-    # Determine if Electric or Gas based system
     if config['fuel'] == 'Natural Gas':
         fuel_type = 'Gas'
     else:
         fuel_type = 'Electric'
     
-    # First try with exact match
     mask = (
         (REGRESSION_COEFFICIENTS['base'] == config['base']) &
         (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
@@ -184,7 +171,6 @@ def find_baseline_eui_row(config):
     result = REGRESSION_COEFFICIENTS[mask]
     
     if result.empty:
-        # Try with fuel column check (handle NaN)
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
             (REGRESSION_COEFFICIENTS['csw'].isna() | (REGRESSION_COEFFICIENTS['csw'] == 'N/A')) &
@@ -201,9 +187,7 @@ def find_baseline_eui_row(config):
     return result.iloc[0]
 
 def calculate_from_regression(row, degree_days, is_heating=True):
-    """
-    Calculate value using regression formula: value = a + b*DD + c*DD²
-    """
+    """Calculate value using regression formula: value = a + b*DD + c*DD²"""
     if row is None:
         return 0
     
@@ -211,7 +195,7 @@ def calculate_from_regression(row, degree_days, is_heating=True):
         a = row['heat_a']
         b = row['heat_b']
         c = row['heat_c']
-    else:  # cooling
+    else:
         a = row['cool_a']
         b = row['cool_b']
         c = row['cool_c']
@@ -239,9 +223,7 @@ def calculate_q24_q25(operating_hours):
     return q24, q25
 
 def calculate_savings(inputs):
-    """
-    Main calculation function using regression formulas
-    """
+    """Main calculation function using regression formulas"""
     building_area = inputs['building_area']
     csw_area = inputs['csw_area']
     operating_hours = inputs['operating_hours']
@@ -251,18 +233,14 @@ def calculate_savings(inputs):
     cooling_installed = inputs['cooling_installed']
     heating_fuel = inputs['heating_fuel']
     
-    # Get HDD/CDD directly from inputs (passed from Step 1)
     hdd = inputs.get('hdd', 0)
     cdd = inputs.get('cdd', 0)
     
-    # Determine interpolation points
     q24, q25 = calculate_q24_q25(operating_hours)
     
-    # Build configurations for both hour thresholds
     config_high = build_lookup_config(inputs, q24)
     config_low = build_lookup_config(inputs, q25)
     
-    # Find regression rows
     row_high = find_regression_row(config_high)
     row_low = find_regression_row(config_low)
     
@@ -270,9 +248,7 @@ def calculate_savings(inputs):
         st.error(f"⚠️ Could not find regression coefficients for configuration")
         return None
     
-    # Calculate heating savings based on fuel type
     if heating_fuel == 'Natural Gas':
-        # Gas heating - use HDD for heating calculation
         heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
         heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
         gas_savings_high = heating_high
@@ -280,65 +256,49 @@ def calculate_savings(inputs):
         electric_heating_high = 0
         electric_heating_low = 0
     else:
-        # Electric heating - use HDD for heating calculation
         electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
         electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
         gas_savings_high = 0
         gas_savings_low = 0
     
-    # Calculate cooling savings - use CDD
     cooling_high = calculate_from_regression(row_high, cdd, is_heating=False)
     cooling_low = calculate_from_regression(row_low, cdd, is_heating=False)
     
-    # Interpolate for actual operating hours
     if heating_fuel == 'Natural Gas':
-        c31 = 0  # No electric heating
+        c31 = 0
         c33 = interpolate_hours(operating_hours, gas_savings_high, gas_savings_low, q24, q25)
     else:
         c31 = interpolate_hours(operating_hours, electric_heating_high, electric_heating_low, q24, q25)
-        c33 = 0  # No gas heating
+        c33 = 0
     
     c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
     
-    # Apply cooling multiplier
     w24 = 1.0 if cooling_installed == "Yes" else 0.0
     c32 = c32_base * w24
     
-    # Calculate baseline EUI using separate baseline regression
     baseline_row_high = find_baseline_eui_row(config_high)
     baseline_row_low = find_baseline_eui_row(config_low)
     
     if baseline_row_high is None or baseline_row_low is None:
         st.error("⚠️ Could not find baseline EUI coefficients")
-        st.write("**Debug Info:**")
-        st.write(f"Looking for: base={config_high['base']}, size={config_high['size']}, fuel={'Gas' if config_high['fuel']=='Natural Gas' else 'Electric'}, hours={config_high['hours']}")
-        st.write(f"Available baseline rows in CSV:")
-        baseline_rows = REGRESSION_COEFFICIENTS[REGRESSION_COEFFICIENTS['csw'] == 'N/A']
-        st.dataframe(baseline_rows[['row', 'base', 'size', 'hvac_fuel', 'hours']])
         return None
     
-    # Baseline EUI uses HDD
     baseline_eui_high = calculate_from_regression(baseline_row_high, hdd, is_heating=True)
     baseline_eui_low = calculate_from_regression(baseline_row_low, hdd, is_heating=True)
     baseline_eui = interpolate_hours(operating_hours, baseline_eui_high, baseline_eui_low, q24, q25)
     
-    # Calculate total energy savings
     electric_savings_kwh = (c31 + c32) * csw_area
     gas_savings_therms = c33 * csw_area
     
-    # Calculate cost savings
     electric_cost_savings = electric_savings_kwh * electric_rate
     gas_cost_savings = gas_savings_therms * gas_rate
     total_cost_savings = electric_cost_savings + gas_cost_savings
     
-    # Calculate savings intensity
     total_savings_kbtu_sf = (electric_savings_kwh * 3.413 + gas_savings_therms * 100) / building_area
     
-    # Calculate EUI savings percentage
     new_eui = baseline_eui - total_savings_kbtu_sf
     percent_eui_savings = (total_savings_kbtu_sf / baseline_eui * 100) if baseline_eui > 0 else 0
     
-    # Calculate WWR
     wwr = calculate_wwr(csw_area, building_area, num_floors) if csw_area > 0 and num_floors > 0 else None
     
     return {
@@ -369,7 +329,7 @@ with col_logo:
     if os.path.exists('logo.png'):
         st.image('logo.png', width=180)
     else:
-        st.write("")  # Placeholder if no logo
+        st.write("")
 with col_title:
     st.markdown("<h1 style='margin-bottom: 0;'>Winsert Savings Calculator</h1>", unsafe_allow_html=True)
     st.markdown("<p style='font-size: 1.2em; color: #666; margin-top: 0;'>Office Buildings</p>", unsafe_allow_html=True)
@@ -414,7 +374,6 @@ if st.session_state.step == 1:
             st.session_state.hdd = weather['HDD']
             st.session_state.cdd = weather['CDD']
             
-            # Display HDD and CDD in compact, aligned boxes
             st.markdown("<br>", unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
@@ -459,13 +418,10 @@ elif st.session_state.step == 2:
         st.session_state.existing_window = existing_window
     
     with col2:
-        # Filter CSW types based on existing window selection
         if existing_window == 'Double pane':
-            # Only Winsert Lite available for double pane existing windows
             csw_types_list = ['Winsert Lite']
             csw_type_idx = 0
         else:
-            # Both options available for single pane
             csw_types_list = CSW_TYPES
             csw_type_idx = 0
             if 'csw_type' in st.session_state and st.session_state.csw_type in csw_types_list:
@@ -520,13 +476,10 @@ elif st.session_state.step == 3:
         hvac_system = st.selectbox('HVAC System Type', options=hvac_systems_list, index=hvac_idx, key='hvac_system_select')
         st.session_state.hvac_system = hvac_system
         
-        # Filter heating fuel options based on HVAC system selection
         if hvac_system == 'Packaged VAV with electric reheat':
-            # Only Electric available for this HVAC type
             heating_fuels_list = ['Electric']
             fuel_idx = 0
         else:
-            # All options available for other HVAC types
             heating_fuels_list = HEATING_FUELS
             fuel_idx = 0
             if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
@@ -542,6 +495,7 @@ elif st.session_state.step == 3:
         cooling_installed = st.selectbox('Cooling Installed?', options=cooling_options_list, index=cooling_idx, key='cooling_installed_select')
         st.session_state.cooling_installed = cooling_installed
     
+    st.markdown("<br>", unsafe_allow_html=True)
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button('← Back'):
@@ -578,13 +532,11 @@ elif st.session_state.step == 4:
     if results:
         st.success('✅ Calculation Complete!')
         
-        # Top section: EUI Waterfall Chart and Cost Savings side by side
         col_chart, col_cost = st.columns([1.3, 1])
         
         with col_chart:
             st.markdown('#### Energy Use Intensity (EUI) Reduction')
             
-            # Create waterfall chart for EUI
             baseline_eui = results['baseline_eui']
             savings_eui = results['total_savings_kbtu_sf']
             new_eui = results['new_eui']
@@ -621,7 +573,6 @@ elif st.session_state.step == 4:
             
             st.plotly_chart(fig, use_container_width=True)
             
-            # EUI Savings box below chart - more compact
             st.markdown(
                 f"""
                 <div style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
@@ -643,7 +594,6 @@ elif st.session_state.step == 4:
         with col_cost:
             st.markdown('#### Annual Cost Savings')
             
-            # Total savings - more compact
             st.markdown(
                 f"""
                 <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -663,7 +613,6 @@ elif st.session_state.step == 4:
                 unsafe_allow_html=True
             )
             
-            # Electric savings
             st.markdown(
                 f"""
                 <div style='background: #FFF3E0; 
@@ -680,7 +629,6 @@ elif st.session_state.step == 4:
                 unsafe_allow_html=True
             )
             
-            # Gas savings - always show even if $0
             st.markdown(
                 f"""
                 <div style='background: #E3F2FD; 
@@ -696,7 +644,6 @@ elif st.session_state.step == 4:
                 unsafe_allow_html=True
             )
         
-        # Energy savings breakdown
         st.markdown('---')
         st.markdown('#### Energy Savings Breakdown')
         
@@ -718,7 +665,6 @@ elif st.session_state.step == 4:
                 unsafe_allow_html=True
             )
         
-        # Expandable calculation details
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander('🔍 View Detailed Calculations'):
             st.markdown('**Performance Metrics**')
@@ -748,138 +694,6 @@ elif st.session_state.step == 4:
     col_back, col_space = st.columns([1, 3])
     with col_back:
         if st.button('← Start Over', type='secondary'):
-            # Clear all session state except 'step'
-            keys_to_keep = []
-            keys_to_delete = [key for key in st.session_state.keys() if key not in keys_to_keep]
-            for key in keys_to_delete:
-                del st.session_state[key]
-            st.session_state.step = 1
-            st.rerun()=60, r=20)
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Prominent EUI Savings percentage below chart
-            st.markdown(
-                f"""
-                <div style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
-                            padding: 30px; 
-                            border-radius: 15px; 
-                            text-align: center;
-                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            margin-top: 15px;'>
-                    <h1 style='color: white; margin: 0; font-size: 3em; font-weight: bold;'>
-                        {results['percent_eui_savings']:.1f}%
-                    </h1>
-                    <p style='color: white; margin: 10px 0 0 0; font-size: 1.2em;'>
-                        Energy Use Intensity Reduction
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        
-        with col_savings:
-            st.markdown('### 💰 Annual Cost Savings')
-            
-            # Large, prominent total savings
-            st.markdown(
-                f"""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            padding: 30px; 
-                            border-radius: 15px; 
-                            text-align: center;
-                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                            margin-bottom: 20px;'>
-                    <h1 style='color: white; margin: 0; font-size: 3em; font-weight: bold;'>
-                        ${results['total_cost_savings']:,.0f}
-                    </h1>
-                    <p style='color: #E0E0E0; margin: 10px 0 0 0; font-size: 1.2em;'>
-                        Total Annual Savings
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            # Breakdown of savings
-            if results['electric_cost_savings'] > 0:
-                st.markdown(
-                    f"""
-                    <div style='background: #FFF3E0; 
-                                padding: 20px; 
-                                border-radius: 10px; 
-                                margin-bottom: 15px;
-                                border-left: 5px solid #FF9800;'>
-                        <h3 style='margin: 0 0 10px 0; color: #E65100;'>⚡ Electric Savings</h3>
-                        <p style='font-size: 2em; margin: 0; font-weight: bold; color: #E65100;'>
-                            ${results['electric_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
-                        </p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-            
-            if results['gas_cost_savings'] > 0:
-                st.markdown(
-                    f"""
-                    <div style='background: #E3F2FD; 
-                                padding: 20px; 
-                                border-radius: 10px;
-                                border-left: 5px solid #2196F3;'>
-                        <h3 style='margin: 0 0 10px 0; color: #0D47A1;'>🔥 Natural Gas Savings</h3>
-                        <p style='font-size: 2em; margin: 0; font-weight: bold; color: #0D47A1;'>
-                            ${results['gas_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
-                        </p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-        
-        # Energy savings details below the main visualization
-        st.markdown('---')
-        st.markdown('### ⚡ Energy Savings Breakdown')
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric('Electric Energy Savings', f'{results["electric_savings_kwh"]:,.0f} kWh/yr', 
-                     help='Annual electricity saved by installing secondary windows')
-        with col2:
-            st.metric('Natural Gas Savings', f'{results["gas_savings_therms"]:,.0f} therms/yr',
-                     help='Annual natural gas saved by installing secondary windows')
-        with col3:
-            st.metric('Total Energy Savings', f'{results["total_savings_kbtu_sf"]:.2f} kBtu/SF-yr',
-                     help='Total energy savings per square foot of building area per year')
-        
-        # Expandable calculation details
-        with st.expander('🔍 View Detailed Calculations'):
-            st.markdown('#### Performance Metrics')
-            detail_col1, detail_col2 = st.columns(2)
-            with detail_col1:
-                st.write(f"**Baseline EUI:** {results['baseline_eui']:.2f} kBtu/SF-yr")
-                st.write(f"**New EUI:** {results['new_eui']:.2f} kBtu/SF-yr")
-                st.write(f"**EUI Reduction:** {results['percent_eui_savings']:.1f}%")
-            with detail_col2:
-                st.write(f"**Electric Heating Savings:** {results['heating_per_sf']:.4f} kWh/SF-CSW")
-                st.write(f"**Cooling & Fans Savings:** {results['cooling_per_sf']:.4f} kWh/SF-CSW")
-                st.write(f"**Gas Heating Savings:** {results['gas_per_sf']:.4f} therms/SF-CSW")
-            
-            st.markdown('#### Project Details')
-            detail_col3, detail_col4 = st.columns(2)
-            with detail_col3:
-                st.write(f"**Location:** {inputs['city']}, {inputs['state']}")
-                st.write(f"**Heating Degree Days:** {results['hdd']:,}")
-                st.write(f"**Cooling Degree Days:** {results['cdd']:,}")
-            with detail_col4:
-                st.write(f"**Building Area:** {inputs['building_area']:,} SF")
-                st.write(f"**Secondary Window Area:** {inputs['csw_area']:,} SF")
-                if results['wwr']:
-                    st.write(f"**Window-to-Wall Ratio:** {results['wwr']:.1%}")
-    
-    col_back, col_space = st.columns([1, 3])
-    with col_back:
-        if st.button('← Start Over', type='secondary'):
-            # Clear all session state except 'step'
             keys_to_keep = []
             keys_to_delete = [key for key in st.session_state.keys() if key not in keys_to_keep]
             for key in keys_to_delete:
@@ -893,11 +707,10 @@ with st.sidebar:
         st.markdown('Modify values below to see updated results:')
         st.markdown('---')
         
-        # Location (read-only display)
-        st.markdown(f"**📍 Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
+        st.markdown(f"**📍 Location**")
+        st.text(f"{st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
         st.markdown('---')
         
-        # Editable Building Envelope
         st.markdown('**🏢 Building Envelope**')
         building_area = st.number_input('Building Area (SF)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='sidebar_building_area')
         if building_area != st.session_state.get('building_area'):
@@ -924,9 +737,12 @@ with st.sidebar:
             st.session_state.csw_area = csw_area
             st.rerun()
         
+        if csw_area > 0 and building_area > 0 and num_floors > 0:
+            wwr = calculate_wwr(csw_area, building_area, num_floors)
+            st.text(f"WWR: {wwr:.0%}")
+        
         st.markdown('---')
         
-        # Editable HVAC & Utility
         st.markdown('**⚙️ HVAC & Utility**')
         operating_hours = st.number_input('Operating Hours/yr', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='sidebar_operating_hours')
         if operating_hours != st.session_state.get('operating_hours'):
