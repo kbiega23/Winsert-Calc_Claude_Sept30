@@ -367,7 +367,7 @@ def calculate_savings(inputs):
 col_logo, col_title = st.columns([1, 5])
 with col_logo:
     if os.path.exists('logo.png'):
-        st.image('logo.png', width=240)
+        st.image('logo.png', width=120)
 with col_title:
     st.title('Winsert Savings Calculator')
     st.markdown('### Office Buildings')
