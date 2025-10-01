@@ -363,14 +363,16 @@ def calculate_savings(inputs):
 # UI
 # ============================================================================
 
-# Header with logo and title
-col_logo, col_title = st.columns([1, 5])
+# Header with logo and title - cleaner, more compact
+col_logo, col_title = st.columns([1, 6])
 with col_logo:
     if os.path.exists('logo.png'):
-        st.image('logo.png', width=120)
+        st.image('logo.png', width=180)
+    else:
+        st.write("")  # Placeholder if no logo
 with col_title:
-    st.title('Winsert Savings Calculator')
-    st.markdown('### Office Buildings')
+    st.markdown("<h1 style='margin-bottom: 0;'>Winsert Savings Calculator</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size: 1.2em; color: #666; margin-top: 0;'>Office Buildings</p>", unsafe_allow_html=True)
 
 st.markdown('---')
 
@@ -389,36 +391,50 @@ st.write(f'Step {st.session_state.step} of 4')
 
 if st.session_state.step == 1:
     st.header('Step 1: Project Location')
-    col1, col2 = st.columns(2)
     
-    with col1:
-        # Use index to persist selection
-        state_options = sorted(WEATHER_DATA_BY_STATE.keys())
-        default_state_idx = 0
-        if 'state' in st.session_state and st.session_state.state in state_options:
-            default_state_idx = state_options.index(st.session_state.state)
-        
-        state = st.selectbox('Select State', options=state_options, index=default_state_idx, key='state_select')
-        st.session_state.state = state
-        
-        if state:
-            city_options = sorted(WEATHER_DATA_BY_STATE[state].keys())
-            default_city_idx = 0
-            if 'city' in st.session_state and st.session_state.city in city_options:
-                default_city_idx = city_options.index(st.session_state.city)
-            
-            city = st.selectbox('Select City', options=city_options, index=default_city_idx, key='city_select')
-            st.session_state.city = city
+    state_options = sorted(WEATHER_DATA_BY_STATE.keys())
+    default_state_idx = 0
+    if 'state' in st.session_state and st.session_state.state in state_options:
+        default_state_idx = state_options.index(st.session_state.state)
     
-    if state and city:
-        with col2:
+    state = st.selectbox('Select State', options=state_options, index=default_state_idx, key='state_select')
+    st.session_state.state = state
+    
+    if state:
+        city_options = sorted(WEATHER_DATA_BY_STATE[state].keys())
+        default_city_idx = 0
+        if 'city' in st.session_state and st.session_state.city in city_options:
+            default_city_idx = city_options.index(st.session_state.city)
+        
+        city = st.selectbox('Select City', options=city_options, index=default_city_idx, key='city_select')
+        st.session_state.city = city
+        
+        if city:
             weather = WEATHER_DATA_BY_STATE[state][city]
-            st.info(f"**Location HDD (Base 65):** {weather['HDD']:,}")
-            st.info(f"**Location CDD (Base 65):** {weather['CDD']:,}")
-            # Store HDD/CDD in session state for later use
             st.session_state.hdd = weather['HDD']
             st.session_state.cdd = weather['CDD']
+            
+            # Display HDD and CDD in compact, aligned boxes
+            st.markdown("<br>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(
+                    f"""<div style='padding: 12px; background-color: #f0f2f6; border-radius: 8px; text-align: center;'>
+                    <p style='margin: 0; font-size: 0.9em; color: #666;'>Heating Degree Days</p>
+                    <p style='margin: 5px 0 0 0; font-size: 1.4em; font-weight: bold; color: #333;'>{weather['HDD']:,.0f}</p>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
+            with col2:
+                st.markdown(
+                    f"""<div style='padding: 12px; background-color: #f0f2f6; border-radius: 8px; text-align: center;'>
+                    <p style='margin: 0; font-size: 0.9em; color: #666;'>Cooling Degree Days</p>
+                    <p style='margin: 5px 0 0 0; font-size: 1.4em; font-weight: bold; color: #333;'>{weather['CDD']:,.0f}</p>
+                    </div>""",
+                    unsafe_allow_html=True
+                )
     
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button('Next →', type='primary'):
         if state and city:
             st.session_state.step = 2
@@ -463,8 +479,15 @@ elif st.session_state.step == 2:
         
         if csw_area > 0 and building_area > 0 and num_floors > 0:
             wwr = calculate_wwr(csw_area, building_area, num_floors)
-            st.metric('Window-to-Wall Ratio', f"{wwr:.1%}", help="Automatically calculated")
+            st.markdown(
+                f"""<div style='padding: 12px; background-color: #f0f2f6; border-radius: 8px; margin-top: 10px;'>
+                <p style='margin: 0; font-size: 0.9em; color: #666;'>Window-to-Wall Ratio</p>
+                <p style='margin: 5px 0 0 0; font-size: 1.4em; font-weight: bold; color: #333;'>{wwr:.0%}</p>
+                </div>""",
+                unsafe_allow_html=True
+            )
     
+    st.markdown("<br>", unsafe_allow_html=True)
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button('← Back'):
@@ -555,78 +578,183 @@ elif st.session_state.step == 4:
     if results:
         st.success('✅ Calculation Complete!')
         
-        # Create two main columns: chart on left, cost savings on right
-        col_chart, col_savings = st.columns([1.2, 1])
+        # Top section: EUI Waterfall Chart and Cost Savings side by side
+        col_chart, col_cost = st.columns([1.3, 1])
         
         with col_chart:
-            st.markdown('### 📊 Energy Use Intensity (EUI) Reduction')
+            st.markdown('#### Energy Use Intensity (EUI) Reduction')
             
-            # Create stacked bar chart for EUI
+            # Create waterfall chart for EUI
             baseline_eui = results['baseline_eui']
-            new_eui = results['new_eui']
             savings_eui = results['total_savings_kbtu_sf']
+            new_eui = results['new_eui']
             
-            fig = go.Figure()
-            
-            # Baseline bar
-            fig.add_trace(go.Bar(
-                name='Baseline EUI',
-                x=['Before Secondary Windows'],
-                y=[baseline_eui],
-                marker_color='#FF6B6B',
-                text=[f"{baseline_eui:.1f}<br>kBtu/SF-yr"],
-                textposition='inside',
-                textfont=dict(size=14, color='white', family='Arial Black'),
-                hovertemplate='<b>Baseline EUI</b><br>%{y:.2f} kBtu/SF-yr<extra></extra>'
-            ))
-            
-            # New EUI bar (stacked)
-            fig.add_trace(go.Bar(
-                name='New EUI',
-                x=['After Secondary Windows'],
-                y=[new_eui],
-                marker_color='#4ECDC4',
-                text=[f"{new_eui:.1f}<br>kBtu/SF-yr"],
-                textposition='inside',
-                textfont=dict(size=14, color='white', family='Arial Black'),
-                hovertemplate='<b>New EUI</b><br>%{y:.2f} kBtu/SF-yr<extra></extra>'
-            ))
-            
-            # Savings portion (on top of new EUI)
-            fig.add_trace(go.Bar(
-                name='EUI Savings',
-                x=['After Secondary Windows'],
-                y=[savings_eui],
-                marker_color='#95E1D3',
-                text=[f"−{savings_eui:.1f}<br>({results['percent_eui_savings']:.1f}%)"],
-                textposition='inside',
-                textfont=dict(size=14, color='#2C3E50', family='Arial Black'),
-                hovertemplate='<b>EUI Savings</b><br>%{y:.2f} kBtu/SF-yr<br>(%{text})<extra></extra>'
+            fig = go.Figure(go.Waterfall(
+                orientation = "v",
+                measure = ["absolute", "relative", "total"],
+                x = ["Baseline EUI<br>Before Winsert", "Savings with<br>Winsert", "EUI After<br>Winsert"],
+                y = [baseline_eui, -savings_eui, new_eui],
+                text = [f"{baseline_eui:.1f}", f"−{savings_eui:.1f}", f"{new_eui:.1f}"],
+                textposition = "outside",
+                textfont = dict(size=14, family='Arial Black'),
+                decreasing = {"marker":{"color":"#38ef7d"}},
+                increasing = {"marker":{"color":"#FF6B6B"}},
+                totals = {"marker":{"color":"#4ECDC4"}},
+                connector = {"line":{"color":"rgb(63, 63, 63)"}},
             ))
             
             fig.update_layout(
-                barmode='stack',
-                height=400,
-                showlegend=True,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5,
-                    font=dict(size=12)
-                ),
+                height=350,
+                showlegend=False,
                 yaxis=dict(
-                    title='Energy Use Intensity (kBtu/SF-yr)',
-                    title_font=dict(size=14),
+                    title='kBtu/SF-yr',
+                    title_font=dict(size=12),
                     gridcolor='#E0E0E0'
                 ),
                 xaxis=dict(
-                    title_font=dict(size=14)
+                    title_font=dict(size=12)
                 ),
                 plot_bgcolor='white',
                 paper_bgcolor='white',
-                margin=dict(t=80, b=60, l=60, r=20)
+                margin=dict(t=20, b=40, l=60, r=20)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # EUI Savings box below chart - more compact
+            st.markdown(
+                f"""
+                <div style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                            padding: 20px; 
+                            border-radius: 10px; 
+                            text-align: center;
+                            box-shadow: 0 3px 5px rgba(0,0,0,0.1);'>
+                    <h2 style='color: white; margin: 0; font-size: 2.2em; font-weight: bold;'>
+                        {results['percent_eui_savings']:.1f}%
+                    </h2>
+                    <p style='color: white; margin: 5px 0 0 0; font-size: 0.95em;'>
+                        EUI Reduction ({results['total_savings_kbtu_sf']:.1f} kBtu/SF-yr)
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        
+        with col_cost:
+            st.markdown('#### Annual Cost Savings')
+            
+            # Total savings - more compact
+            st.markdown(
+                f"""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            padding: 25px; 
+                            border-radius: 10px; 
+                            text-align: center;
+                            box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+                            margin-bottom: 15px;'>
+                    <h1 style='color: white; margin: 0; font-size: 2.5em; font-weight: bold;'>
+                        ${results['total_cost_savings']:,.0f}
+                    </h1>
+                    <p style='color: #E0E0E0; margin: 8px 0 0 0; font-size: 1em;'>
+                        Total Annual Savings
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Electric savings
+            st.markdown(
+                f"""
+                <div style='background: #FFF3E0; 
+                            padding: 15px; 
+                            border-radius: 8px; 
+                            margin-bottom: 12px;
+                            border-left: 4px solid #FF9800;'>
+                    <p style='margin: 0 0 5px 0; color: #E65100; font-size: 0.9em; font-weight: 600;'>⚡ Electric Savings</p>
+                    <p style='font-size: 1.6em; margin: 0; font-weight: bold; color: #E65100;'>
+                        ${results['electric_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Gas savings - always show even if $0
+            st.markdown(
+                f"""
+                <div style='background: #E3F2FD; 
+                            padding: 15px; 
+                            border-radius: 8px;
+                            border-left: 4px solid #2196F3;'>
+                    <p style='margin: 0 0 5px 0; color: #0D47A1; font-size: 0.9em; font-weight: 600;'>🔥 Natural Gas Savings</p>
+                    <p style='font-size: 1.6em; margin: 0; font-weight: bold; color: #0D47A1;'>
+                        ${results['gas_cost_savings']:,.0f}<span style='font-size: 0.5em;'>/year</span>
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        
+        # Energy savings breakdown
+        st.markdown('---')
+        st.markdown('#### Energy Savings Breakdown')
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(
+                f"""<div style='padding: 15px; background-color: #f0f2f6; border-radius: 8px;'>
+                <p style='margin: 0; font-size: 0.9em; color: #666;'>Electric Energy Savings</p>
+                <p style='margin: 5px 0 0 0; font-size: 1.5em; font-weight: bold; color: #333;'>{results["electric_savings_kwh"]:,.0f} <span style='font-size: 0.6em;'>kWh/yr</span></p>
+                </div>""",
+                unsafe_allow_html=True
+            )
+        with col2:
+            st.markdown(
+                f"""<div style='padding: 15px; background-color: #f0f2f6; border-radius: 8px;'>
+                <p style='margin: 0; font-size: 0.9em; color: #666;'>Natural Gas Savings</p>
+                <p style='margin: 5px 0 0 0; font-size: 1.5em; font-weight: bold; color: #333;'>{results["gas_savings_therms"]:,.0f} <span style='font-size: 0.6em;'>therms/yr</span></p>
+                </div>""",
+                unsafe_allow_html=True
+            )
+        
+        # Expandable calculation details
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander('🔍 View Detailed Calculations'):
+            st.markdown('**Performance Metrics**')
+            detail_col1, detail_col2 = st.columns(2)
+            with detail_col1:
+                st.write(f"• Baseline EUI: {results['baseline_eui']:.1f} kBtu/SF-yr")
+                st.write(f"• New EUI: {results['new_eui']:.1f} kBtu/SF-yr")
+                st.write(f"• EUI Reduction: {results['percent_eui_savings']:.1f}%")
+            with detail_col2:
+                st.write(f"• Electric Heating: {results['heating_per_sf']:.4f} kWh/SF-CSW")
+                st.write(f"• Cooling & Fans: {results['cooling_per_sf']:.4f} kWh/SF-CSW")
+                st.write(f"• Gas Heating: {results['gas_per_sf']:.4f} therms/SF-CSW")
+            
+            st.markdown('**Project Details**')
+            detail_col3, detail_col4 = st.columns(2)
+            with detail_col3:
+                st.write(f"• Location: {inputs['city']}, {inputs['state']}")
+                st.write(f"• Heating Degree Days: {results['hdd']:,.0f}")
+                st.write(f"• Cooling Degree Days: {results['cdd']:,.0f}")
+            with detail_col4:
+                st.write(f"• Building Area: {inputs['building_area']:,} SF")
+                st.write(f"• Secondary Window Area: {inputs['csw_area']:,} SF")
+                if results['wwr']:
+                    st.write(f"• Window-to-Wall Ratio: {results['wwr']:.0%}")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_back, col_space = st.columns([1, 3])
+    with col_back:
+        if st.button('← Start Over', type='secondary'):
+            # Clear all session state except 'step'
+            keys_to_keep = []
+            keys_to_delete = [key for key in st.session_state.keys() if key not in keys_to_keep]
+            for key in keys_to_delete:
+                del st.session_state[key]
+            st.session_state.step = 1
+            st.rerun()=60, r=20)
             )
             
             st.plotly_chart(fig, use_container_width=True)
