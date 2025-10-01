@@ -442,6 +442,18 @@ elif st.session_state.step == 2:
                 </div>""",
                 unsafe_allow_html=True
             )
+            
+            # WWR validation warnings
+            if wwr > 1.0:
+                st.error("⚠️ WWR is larger than physically possible. Please update.")
+                st.session_state.wwr_error = True
+            elif wwr < 0.10 or wwr > 0.50:
+                st.warning("⚠️ Warning: window to wall ratio seems out of norm. Please confirm before proceeding.")
+                st.session_state.wwr_error = False
+            else:
+                st.session_state.wwr_error = False
+        else:
+            st.session_state.wwr_error = False
     
     st.markdown("<br>", unsafe_allow_html=True)
     col_back, col_next = st.columns([1, 1])
@@ -450,7 +462,9 @@ elif st.session_state.step == 2:
             st.session_state.step = 1
             st.rerun()
     with col_next:
-        if st.button('Next →', type='primary'):
+        # Disable next button if WWR > 100%
+        can_proceed = not st.session_state.get('wwr_error', False)
+        if st.button('Next →', type='primary', disabled=not can_proceed):
             st.session_state.step = 3
             st.rerun()
 
