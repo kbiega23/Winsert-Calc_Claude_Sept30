@@ -171,6 +171,38 @@ def build_lookup_config_hotel(inputs, occupancy_level):
         'hours': ''
     }
 
+def build_baseline_config_hotel(inputs, occupancy_level):
+    """Build configuration for finding Hotel BASELINE row - uses different logic than CSW lookup"""
+    base = 'Single' if inputs['existing_window'] == 'Single pane' else 'Double'
+    
+    hvac_system = inputs['hvac_system']
+    heating_fuel = inputs['heating_fuel']
+    
+    # CRITICAL: For baseline, size depends on heating fuel for PTAC/PTHP systems
+    # If PTAC/PTHP with Natural Gas → use Large hotel baseline (separate gas heating system)
+    # If PTAC/PTHP with Electric/None → use Small hotel baseline (all-electric PTAC/PTHP)
+    if hvac_system in ['PTAC', 'PTHP'] and heating_fuel == 'Natural Gas':
+        size = 'Large'
+        hvac_fuel_baseline = 'Gas'
+    elif hvac_system == 'PTAC':
+        size = 'Small'
+        hvac_fuel_baseline = 'PTAC'
+    elif hvac_system == 'PTHP':
+        size = 'Small'
+        hvac_fuel_baseline = 'PTHP'
+    else:
+        # Large hotel (Fan Coil, Other)
+        size = 'Large'
+        hvac_fuel_baseline = 'Gas' if heating_fuel == 'Natural Gas' else 'Electric'
+    
+    return {
+        'base': base,
+        'size': size,
+        'hvac_fuel': hvac_fuel_baseline,
+        'occupancy': occupancy_level,
+        'hours': ''
+    }
+
 def find_regression_row(config, building_type):
     """Find matching regression row"""
     if REGRESSION_COEFFICIENTS.empty:
@@ -243,21 +275,12 @@ def find_baseline_eui_row(config, building_type):
             result = REGRESSION_COEFFICIENTS[mask]
     
     else:  # Hotel
-        # CRITICAL FIX: For Hotel baseline rows, hvac_fuel column varies by hotel size
-        # Small hotels (PTAC/PTHP): use the HVAC system type itself ('PTAC' or 'PTHP')
-        # Large hotels: use heating fuel type ('Gas' or 'Electric')
-        if config['hvac_fuel'] in ['PTAC', 'PTHP']:
-            # Small hotel - use HVAC system type
-            baseline_hvac_fuel = config['hvac_fuel']
-        else:
-            # Large hotel - use heating fuel type
-            baseline_hvac_fuel = 'Gas' if config['fuel'] == 'Gas' else 'Electric'
-        
+        # Hotel baseline lookup uses the hvac_fuel from the baseline config
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
             (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
             (REGRESSION_COEFFICIENTS['size'] == config['size']) &
-            (REGRESSION_COEFFICIENTS['hvac_fuel'] == baseline_hvac_fuel) &
+            (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel']) &
             (REGRESSION_COEFFICIENTS['occupancy'] == config['occupancy']) &
             ((REGRESSION_COEFFICIENTS['hours'] == '') | (REGRESSION_COEFFICIENTS['hours'].isna()))
         )
@@ -405,6 +428,7 @@ def calculate_savings_hotel(inputs):
     occupancy_high = 100
     occupancy_low = 33
     
+    # CSW savings lookup - uses standard config
     config_high = build_lookup_config_hotel(inputs, 'High')
     config_low = build_lookup_config_hotel(inputs, 'Low')
     
@@ -443,9 +467,12 @@ def calculate_savings_hotel(inputs):
     # Hotels always apply cooling (no multiplier adjustment needed)
     c32 = c32_base if cooling_installed == "Yes" else 0
     
-    # Find baseline EUI
-    baseline_row_high = find_baseline_eui_row(config_high, 'Hotel')
-    baseline_row_low = find_baseline_eui_row(config_low, 'Hotel')
+    # Baseline lookup - uses separate baseline config
+    baseline_config_high = build_baseline_config_hotel(inputs, 'High')
+    baseline_config_low = build_baseline_config_hotel(inputs, 'Low')
+    
+    baseline_row_high = find_baseline_eui_row(baseline_config_high, 'Hotel')
+    baseline_row_low = find_baseline_eui_row(baseline_config_low, 'Hotel')
     
     if baseline_row_high is None or baseline_row_low is None:
         st.error("⚠️ Could not find Hotel baseline EUI coefficients")
@@ -696,6 +723,12 @@ elif st.session_state.step == 3:
         if building_type == 'Office' and hvac_system == 'Packaged VAV with electric reheat':
             heating_fuels_list = ['Electric']
             fuel_idx = 0
+        elif building_type == 'Hotel' and hvac_system == 'PTHP':
+            # PTHP systems are heat pumps - only electric heating is possible
+            heating_fuels_list = ['Electric', 'None']
+            fuel_idx = 0
+            if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
+                fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
         else:
             heating_fuels_list = HEATING_FUELS
             fuel_idx = 0
