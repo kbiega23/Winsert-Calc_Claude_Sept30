@@ -1,4 +1,13 @@
-"""
+# Calculate heating savings
+    if heating_fuel == 'Natural Gas':
+        heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
+        heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
+        gas_savings_high, gas_savings_low = heating_high, heating_low
+        electric_heating_high, electric_heating_low = 0, 0
+    else:
+        electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
+        electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
+        gas_savings_high, gas_savings_low = 0, 0"""
 CSW Savings Calculator - Streamlit Web App
 MULTI-BUILDING VERSION - Supports Office and Hotel buildings
 Uses merged regression_coefficients.csv with both building types
@@ -723,8 +732,8 @@ elif st.session_state.step == 3:
         if building_type == 'Office' and hvac_system == 'Packaged VAV with electric reheat':
             heating_fuels_list = ['Electric']
             fuel_idx = 0
-        elif building_type == 'Hotel' and hvac_system == 'PTHP':
-            # PTHP systems are heat pumps - only electric heating is possible
+        elif building_type == 'Hotel' and hvac_system in ['PTHP', 'PTAC']:
+            # PTAC and PTHP systems are packaged terminal units - only electric heating
             heating_fuels_list = ['Electric', 'None']
             fuel_idx = 0
             if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
