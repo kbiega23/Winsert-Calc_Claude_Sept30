@@ -533,16 +533,16 @@ if REGRESSION_COEFFICIENTS.empty:
     st.error("⚠️ Unable to load regression coefficients.")
     st.stop()
 
-# Calculate total steps based on building type
-total_steps = 5 if st.session_state.get('building_type') else 1
+# Calculate total steps
+total_steps = 5
 if st.session_state.step > 0:
     progress = st.session_state.step / total_steps
     st.progress(progress)
     st.write(f'Step {st.session_state.step} of {total_steps}')
 
-# STEP 0: Building Type Selection
+# STEP 1: Building Type Selection
 if st.session_state.step == 0:
-    st.header('Select Building Type')
+    st.header('Step 1: Select Building Type')
     
     col1, col2 = st.columns(2)
     
@@ -558,9 +558,9 @@ if st.session_state.step == 0:
             st.session_state.step = 1
             st.rerun()
 
-# STEP 1: Location
+# STEP 2: Location
 elif st.session_state.step == 1:
-    st.header('Step 1: Project Location')
+    st.header('Step 2: Project Location')
     
     state_options = sorted(WEATHER_DATA_BY_STATE.keys())
     default_state_idx = 0
@@ -615,16 +615,40 @@ elif st.session_state.step == 1:
                 st.session_state.step = 2
                 st.rerun()
 
-# STEP 2: Building Envelope
+# STEP 3: Building Envelope
 elif st.session_state.step == 2:
-    st.header('Step 2: Building Envelope Information')
+    building_type = st.session_state.get('building_type', 'Office')
+    st.header('Step 3: Building Envelope Information')
     col1, col2 = st.columns(2)
     
     with col1:
-        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area_input')
+        # Set building area limits based on building type
+        if building_type == 'Hotel':
+            min_area, max_area = 15000, 250000
+            area_help = "Hotel building area must be between 15,000 and 250,000 square feet"
+        else:  # Office
+            min_area, max_area = 15000, 500000
+            area_help = "Office building area must be between 15,000 and 500,000 square feet"
+        
+        building_area = st.number_input(
+            'Building Area (Sq.Ft.)', 
+            min_value=min_area, 
+            max_value=max_area, 
+            value=min(max(st.session_state.get('building_area', 75000), min_area), max_area), 
+            step=1000, 
+            key='building_area_input',
+            help=area_help
+        )
         st.session_state.building_area = building_area
         
-        num_floors = st.number_input('Number of Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='num_floors_input')
+        num_floors = st.number_input(
+            'Number of Floors', 
+            min_value=1, 
+            max_value=100, 
+            value=st.session_state.get('num_floors', 5), 
+            key='num_floors_input',
+            help="Number of floors must be between 1 and 100"
+        )
         st.session_state.num_floors = num_floors
         
         window_types_list = WINDOW_TYPES
@@ -684,10 +708,10 @@ elif st.session_state.step == 2:
             st.session_state.step = 3
             st.rerun()
 
-# STEP 3: HVAC & Operations
+# STEP 4: HVAC & Operations
 elif st.session_state.step == 3:
     building_type = st.session_state.get('building_type', 'Office')
-    st.header('Step 3: HVAC & Operations')
+    st.header('Step 4: HVAC & Operations')
     col1, col2 = st.columns(2)
     
     with col1:
@@ -753,7 +777,7 @@ elif st.session_state.step == 3:
             st.session_state.step = 4
             st.rerun()
 
-# STEP 4: Results
+# STEP 5: Results
 elif st.session_state.step == 4:
     building_type = st.session_state.get('building_type', 'Office')
     st.header('💡 Your Energy Savings Results')
@@ -939,12 +963,36 @@ with st.sidebar:
         st.markdown('---')
         
         st.markdown('**🏢 Building Envelope**')
-        building_area = st.number_input('Building Area (SF)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='sidebar_building_area')
+        
+        # Set building area limits based on building type
+        if building_type == 'Hotel':
+            min_area, max_area = 15000, 250000
+            area_help = "Hotel building area must be between 15,000 and 250,000 square feet"
+        else:  # Office
+            min_area, max_area = 15000, 500000
+            area_help = "Office building area must be between 15,000 and 500,000 square feet"
+        
+        building_area = st.number_input(
+            'Building Area (SF)', 
+            min_value=min_area, 
+            max_value=max_area, 
+            value=min(max(st.session_state.get('building_area', 75000), min_area), max_area), 
+            step=1000, 
+            key='sidebar_building_area',
+            help=area_help
+        )
         if building_area != st.session_state.get('building_area'):
             st.session_state.building_area = building_area
             st.rerun()
         
-        num_floors = st.number_input('Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='sidebar_num_floors')
+        num_floors = st.number_input(
+            'Floors', 
+            min_value=1, 
+            max_value=100, 
+            value=st.session_state.get('num_floors', 5), 
+            key='sidebar_num_floors',
+            help="Number of floors must be between 1 and 100"
+        )
         if num_floors != st.session_state.get('num_floors'):
             st.session_state.num_floors = num_floors
             st.rerun()
@@ -954,7 +1002,17 @@ with st.sidebar:
             st.session_state.existing_window = existing_window
             st.rerun()
         
-        csw_type = st.selectbox('Product', options=CSW_TYPES, index=CSW_TYPES.index(st.session_state.get('csw_type', 'Winsert Lite')), key='sidebar_csw_type')
+        # Product type logic - limit to Winsert Lite if Double pane existing
+        if existing_window == 'Double pane':
+            csw_types_list = ['Winsert Lite']
+            csw_type_idx = 0
+        else:
+            csw_types_list = CSW_TYPES
+            csw_type_idx = 0
+            if 'csw_type' in st.session_state and st.session_state.csw_type in csw_types_list:
+                csw_type_idx = csw_types_list.index(st.session_state.csw_type)
+        
+        csw_type = st.selectbox('Product', options=csw_types_list, index=csw_type_idx, key='sidebar_csw_type')
         if csw_type != st.session_state.get('csw_type'):
             st.session_state.csw_type = csw_type
             st.rerun()
@@ -988,7 +1046,22 @@ with st.sidebar:
             st.session_state.hvac_system = hvac_system
             st.rerun()
         
-        heating_fuel = st.selectbox('Heating Fuel', options=HEATING_FUELS, index=HEATING_FUELS.index(st.session_state.get('heating_fuel', 'Electric')), key='sidebar_heating_fuel')
+        # Heating fuel logic - apply same rules as main page
+        if building_type == 'Office' and hvac_system == 'Packaged VAV with electric reheat':
+            heating_fuels_list = ['Electric']
+            fuel_idx = 0
+        elif building_type == 'Hotel' and hvac_system in ['PTHP', 'PTAC']:
+            heating_fuels_list = ['Electric', 'None']
+            fuel_idx = 0
+            if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
+                fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
+        else:
+            heating_fuels_list = HEATING_FUELS
+            fuel_idx = 0
+            if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
+                fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
+        
+        heating_fuel = st.selectbox('Heating Fuel', options=heating_fuels_list, index=fuel_idx, key='sidebar_heating_fuel')
         if heating_fuel != st.session_state.get('heating_fuel'):
             st.session_state.heating_fuel = heating_fuel
             st.rerun()
