@@ -177,23 +177,34 @@ def find_regression_row(config, building_type):
         return None
     
     if building_type == 'Office':
+        # Debug: Show what we're looking for
+        st.write("DEBUG - Looking for Office row with:")
+        st.write(f"  base={config['base']}, csw={config['csw']}, size={config['size']}")
+        st.write(f"  hvac_fuel={config['hvac_fuel']}, fuel={config['fuel']}, hours={config['hours']}")
+        
+        # Check occupancy column - it should be empty string or NaN for Office
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
             (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
             (REGRESSION_COEFFICIENTS['size'] == config['size']) &
             (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel']) &
             (REGRESSION_COEFFICIENTS['hours'] == config['hours']) &
-            (REGRESSION_COEFFICIENTS['occupancy'] == '')
+            ((REGRESSION_COEFFICIENTS['occupancy'] == '') | (REGRESSION_COEFFICIENTS['occupancy'].isna()))
         )
-        if pd.notna(config['fuel']):
+        if pd.notna(config['fuel']) and config['fuel'] != '':
             mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
+        
+        result = REGRESSION_COEFFICIENTS[mask]
+        st.write(f"DEBUG - Found {len(result)} matching rows")
+        if len(result) > 0:
+            st.write("First match:", result.iloc[0].to_dict())
     else:  # Hotel
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
             (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
             (REGRESSION_COEFFICIENTS['size'] == config['size']) &
             (REGRESSION_COEFFICIENTS['occupancy'] == config['occupancy']) &
-            (REGRESSION_COEFFICIENTS['hours'] == '')
+            ((REGRESSION_COEFFICIENTS['hours'] == '') | (REGRESSION_COEFFICIENTS['hours'].isna()))
         )
         if config['hvac_fuel']:
             mask = mask & (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel'])
@@ -202,7 +213,8 @@ def find_regression_row(config, building_type):
         if pd.notna(config['fuel']):
             mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
     
-    result = REGRESSION_COEFFICIENTS[mask]
+        result = REGRESSION_COEFFICIENTS[mask]
+    
     return result.iloc[0] if not result.empty else None
 
 def find_baseline_eui_row(config, building_type):
