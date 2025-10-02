@@ -1,7 +1,7 @@
 """
 CSW Savings Calculator - Streamlit Web App
-Multi-Building Type Version: Office and Hotel
-Updated: Uses new regression_coefficients.csv structure with sequential row numbers
+REGRESSION-BASED VERSION - Calculates dynamically for each city
+UPDATED: Fixed cooling multiplier logic - uses CDD-based polynomial calculation
 """
 
 import streamlit as st
@@ -23,22 +23,14 @@ if 'step' not in st.session_state:
     st.session_state.step = 1
 
 # ============================================================================
-# BUILDING TYPE SPECIFIC OPTIONS
+# DATA: EXACT HVAC OPTIONS FROM EXCEL
 # ============================================================================
 
-BUILDING_TYPES = ['Office', 'Hotel']
-
-OFFICE_HVAC_SYSTEMS = [
+HVAC_SYSTEMS = [
     'Packaged VAV with electric reheat',
     'Packaged VAV with hydronic reheat',
     'Built-up VAV with hydronic reheat',
     'Other'
-]
-
-HOTEL_HVAC_SYSTEMS = [
-    'PTAC',
-    'PTHP',
-    'Fan Coil Unit'
 ]
 
 HEATING_FUELS = ['Electric', 'Natural Gas', 'None']
@@ -46,17 +38,26 @@ COOLING_OPTIONS = ['Yes', 'No']
 WINDOW_TYPES = ['Single pane', 'Double pane']
 CSW_TYPES = ['Winsert Lite', 'Winsert Plus']
 CSW_TYPE_MAPPING = {'Winsert Lite': 'Single', 'Winsert Plus': 'Double'}
-OCCUPANCY_RATES = ['33%', '66%', '100%']
-OCCUPANCY_MAPPING = {'33%': 33, '66%': 66, '100%': 100}
 
-# Office cooling adjustment polynomial coefficients (CDD-based)
-OFFICE_COOLING_MULT_COEFFICIENTS = {
-    'Mid': {'a': 0.6972151451662, 'b': -0.0001078176371, 'c': 3.60507e-8, 'd': -6.4e-12},
-    'Large': {'a': 0.779295373677, 'b': 0.000049630331, 'c': -2.8839e-8, 'd': 1e-12}
+# Cooling adjustment polynomial coefficients (from Regression List row 80 & 81)
+# Formula: w24 = a + b*CDD + c*CDD² + d*CDD³
+COOLING_MULT_COEFFICIENTS = {
+    'Mid': {
+        'a': 0.6972151451662,
+        'b': -0.0001078176371,
+        'c': 3.60507e-8,
+        'd': -6.4e-12
+    },
+    'Large': {
+        'a': 0.779295373677,
+        'b': 0.000049630331,
+        'c': -2.8839e-8,
+        'd': 1e-12
+    }
 }
 
 # ============================================================================
-# LOAD DATA
+# LOAD DATA FROM CSV FILES
 # ============================================================================
 
 @st.cache_data
@@ -85,7 +86,7 @@ def load_weather_data():
 
 @st.cache_data
 def load_regression_coefficients():
-    """Load all regression coefficients from CSV"""
+    """Load regression coefficients from CSV"""
     try:
         df = pd.read_csv('regression_coefficients.csv')
         return df
@@ -93,6 +94,7 @@ def load_regression_coefficients():
         st.error("⚠️ Regression coefficients file not found")
         return pd.DataFrame()
 
+# Load data
 WEATHER_DATA_BY_STATE = load_weather_data()
 REGRESSION_COEFFICIENTS = load_regression_coefficients()
 
@@ -101,24 +103,29 @@ REGRESSION_COEFFICIENTS = load_regression_coefficients()
 # ============================================================================
 
 def calculate_wwr(csw_area, building_area, num_floors):
-    """Calculate Window-to-Wall Ratio"""
+    """Excel F28: F27/((F18/F19)^0.5*4*15*F19)"""
     if num_floors == 0 or building_area == 0:
         return 0
     floor_area = building_area / num_floors
     wall_area = (floor_area ** 0.5) * 4 * 15 * num_floors
     return csw_area / wall_area if wall_area > 0 else 0
 
-def calculate_office_cooling_multiplier(cdd, building_size):
-    """Calculate Office cooling adjustment using CDD-based polynomial"""
-    coeffs = OFFICE_COOLING_MULT_COEFFICIENTS[building_size]
+def calculate_cooling_multiplier(cdd, building_size):
+    """
+    Calculate cooling adjustment multiplier based on CDD using polynomial regression
+    Formula: w24 = a + b*CDD + c*CDD² + d*CDD³
+    This matches the Excel 'Cool_adjust' calculation from Savings Lookup sheet
+    """
+    coeffs = COOLING_MULT_COEFFICIENTS[building_size]
     a, b, c, d = coeffs['a'], coeffs['b'], coeffs['c'], coeffs['d']
+    
     multiplier = a + b * cdd + c * (cdd ** 2) + d * (cdd ** 3)
+    
+    # Ensure multiplier stays within reasonable bounds
     return max(0.0, min(1.0, multiplier))
 
-def build_lookup_config(inputs, hours_or_occupancy):
+def build_lookup_config(inputs, hours):
     """Build configuration for finding regression row"""
-    building_type = inputs['building_type']
-    
     if inputs['existing_window'] == 'Single pane':
         base = 'Single'
     else:
@@ -127,90 +134,46 @@ def build_lookup_config(inputs, hours_or_occupancy):
     csw_product = inputs['csw_type']
     csw_type = CSW_TYPE_MAPPING.get(csw_product, csw_product)
     
-    if building_type == 'Office':
-        if inputs['building_area'] > 30000 and inputs['hvac_system'] == 'Built-up VAV with hydronic reheat':
-            size = 'Large'
-        else:
-            size = 'Mid'
-        
-        heating_fuel = inputs['heating_fuel']
-        if size == 'Mid':
-            hvac_fuel = 'PVAV_Elec' if heating_fuel in ['Electric', 'None'] else 'PVAV_Gas'
-        else:
-            hvac_fuel = 'VAV'
-        
-        fuel = 'Electric' if heating_fuel == 'None' else heating_fuel
-        
-        return {
-            'base': base,
-            'csw': csw_type,
-            'size': size,
-            'hvac_fuel': hvac_fuel,
-            'fuel': fuel,
-            'hours': hours_or_occupancy,
-            'building_type': 'Office'
-        }
+    if inputs['building_area'] > 30000 and inputs['hvac_system'] == 'Built-up VAV with hydronic reheat':
+        size = 'Large'
+    else:
+        size = 'Mid'
     
-    else:  # Hotel
-        hvac = inputs['hvac_system']
-        size = 'Small' if hvac in ['PTAC', 'PTHP'] else 'Large'
-        
-        heating_fuel = inputs['heating_fuel']
-        fuel = 'Electric' if heating_fuel == 'None' else heating_fuel
-        
-        hvac_map = {
-            'PTAC': 'PTAC',
-            'PTHP': 'PTHP',
-            'Fan Coil Unit': 'FCU'
-        }
-        hvac_fuel = hvac_map.get(hvac, hvac)
-        
-        # For heat pumps, adjust fuel type
-        if hvac == 'PTHP':
-            fuel = 'Electric'  # Heat pumps are electric
-        
-        return {
-            'base': base,
-            'csw': csw_type,
-            'size': size,
-            'hvac_fuel': hvac_fuel,
-            'fuel': fuel,
-            'occupancy': hours_or_occupancy,
-            'building_type': 'Hotel'
-        }
+    heating_fuel = inputs['heating_fuel']
+    if size == 'Mid':
+        if heating_fuel in ['Electric', 'None']:
+            hvac_fuel = 'PVAV_Elec'
+        else:
+            hvac_fuel = 'PVAV_Gas'
+    else:
+        hvac_fuel = 'VAV'
+    
+    fuel = 'Electric' if heating_fuel == 'None' else heating_fuel
+    
+    return {
+        'base': base,
+        'csw': csw_type,
+        'size': size,
+        'hvac_fuel': hvac_fuel,
+        'fuel': fuel,
+        'hours': hours
+    }
 
 def find_regression_row(config):
     """Find matching regression row based on configuration"""
     if REGRESSION_COEFFICIENTS.empty:
         return None
     
-    building_type = config.get('building_type', 'Office')
+    mask = (
+        (REGRESSION_COEFFICIENTS['base'] == config['base']) &
+        (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
+        (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+        (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel']) &
+        (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
+    )
     
-    if building_type == 'Office':
-        mask = (
-            (REGRESSION_COEFFICIENTS['building_type'] == 'Office') &
-            (REGRESSION_COEFFICIENTS['base'] == config['base']) &
-            (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
-            (REGRESSION_COEFFICIENTS['size'] == config['size']) &
-            (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel']) &
-            (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
-        )
-        
-        if pd.notna(config['fuel']):
-            mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
-    
-    else:  # Hotel
-        mask = (
-            (REGRESSION_COEFFICIENTS['building_type'] == 'Hotel') &
-            (REGRESSION_COEFFICIENTS['base'] == config['base']) &
-            (REGRESSION_COEFFICIENTS['csw'] == config['csw']) &
-            (REGRESSION_COEFFICIENTS['size'] == config['size']) &
-            (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel']) &
-            (REGRESSION_COEFFICIENTS['occupancy'] == config['occupancy'])
-        )
-        
-        if pd.notna(config['fuel']):
-            mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
+    if pd.notna(config['fuel']):
+        mask = mask & (REGRESSION_COEFFICIENTS['fuel'] == config['fuel'])
     
     result = REGRESSION_COEFFICIENTS[mask]
     
@@ -224,33 +187,31 @@ def find_baseline_eui_row(config):
     if REGRESSION_COEFFICIENTS.empty:
         return None
     
-    building_type = config.get('building_type', 'Office')
-    
     if config['fuel'] == 'Natural Gas':
         fuel_type = 'Gas'
     else:
         fuel_type = 'Electric'
     
-    if building_type == 'Office':
-        mask = (
-            (REGRESSION_COEFFICIENTS['building_type'] == 'Office') &
-            (REGRESSION_COEFFICIENTS['base'] == config['base']) &
-            (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
-            (REGRESSION_COEFFICIENTS['size'] == config['size']) &
-            (REGRESSION_COEFFICIENTS['hvac_fuel'] == fuel_type) &
-            (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
-        )
-    else:  # Hotel
-        mask = (
-            (REGRESSION_COEFFICIENTS['building_type'] == 'Hotel') &
-            (REGRESSION_COEFFICIENTS['base'] == config['base']) &
-            (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
-            (REGRESSION_COEFFICIENTS['size'] == config['size']) &
-            (REGRESSION_COEFFICIENTS['hvac_fuel'] == fuel_type) &
-            (REGRESSION_COEFFICIENTS['occupancy'] == config['occupancy'])
-        )
+    mask = (
+        (REGRESSION_COEFFICIENTS['base'] == config['base']) &
+        (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
+        (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+        (REGRESSION_COEFFICIENTS['hvac_fuel'] == fuel_type) &
+        (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
+    )
     
     result = REGRESSION_COEFFICIENTS[mask]
+    
+    if result.empty:
+        mask = (
+            (REGRESSION_COEFFICIENTS['base'] == config['base']) &
+            (REGRESSION_COEFFICIENTS['csw'].isna() | (REGRESSION_COEFFICIENTS['csw'] == 'N/A')) &
+            (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+            (REGRESSION_COEFFICIENTS['hvac_fuel'] == fuel_type) &
+            (REGRESSION_COEFFICIENTS['fuel'].isna() | (REGRESSION_COEFFICIENTS['fuel'] == 'N/A')) &
+            (REGRESSION_COEFFICIENTS['hours'] == config['hours'])
+        )
+        result = REGRESSION_COEFFICIENTS[mask]
     
     if result.empty:
         return None
@@ -275,7 +236,7 @@ def calculate_from_regression(row, degree_days, is_heating=True):
     return value
 
 def interpolate_hours(operating_hours, val_8760, val_2080_or_2912, q24, q25):
-    """Excel interpolation formula for Office"""
+    """Excel interpolation formula"""
     if operating_hours < 2080:
         return val_2080_or_2912
     elif operating_hours >= 8760:
@@ -283,18 +244,8 @@ def interpolate_hours(operating_hours, val_8760, val_2080_or_2912, q24, q25):
     else:
         return ((operating_hours - q25) / (q24 - q25)) * (val_8760 - val_2080_or_2912) + val_2080_or_2912
 
-def interpolate_occupancy(occupancy, val_100, val_33):
-    """Linear interpolation for Hotel occupancy rates"""
-    if occupancy <= 33:
-        return val_33
-    elif occupancy >= 100:
-        return val_100
-    else:
-        # Linear interpolation between 33 and 100
-        return val_33 + (val_100 - val_33) * (occupancy - 33) / (100 - 33)
-
 def calculate_q24_q25(operating_hours):
-    """Q24/Q25 calculation for Office"""
+    """Q24/Q25 calculation"""
     if operating_hours > 2912:
         q24 = 8760
         q25 = 2912
@@ -304,10 +255,10 @@ def calculate_q24_q25(operating_hours):
     return q24, q25
 
 def calculate_savings(inputs):
-    """Main calculation function - handles both Office and Hotel"""
-    building_type = inputs['building_type']
+    """Main calculation function using regression formulas"""
     building_area = inputs['building_area']
     csw_area = inputs['csw_area']
+    operating_hours = inputs['operating_hours']
     num_floors = inputs['num_floors']
     electric_rate = inputs['electric_rate']
     gas_rate = inputs['gas_rate']
@@ -317,138 +268,64 @@ def calculate_savings(inputs):
     hdd = inputs.get('hdd', 0)
     cdd = inputs.get('cdd', 0)
     
-    if building_type == 'Office':
-        operating_hours = inputs['operating_hours']
-        q24, q25 = calculate_q24_q25(operating_hours)
-        
-        config_high = build_lookup_config(inputs, q24)
-        config_low = build_lookup_config(inputs, q25)
-        
-        row_high = find_regression_row(config_high)
-        row_low = find_regression_row(config_low)
-        
-        if row_high is None or row_low is None:
-            st.error(f"⚠️ Could not find regression coefficients for Office configuration")
-            return None
-        
-        # Calculate heating savings
-        if heating_fuel == 'Natural Gas':
-            heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-            heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-            gas_savings_high = heating_high
-            gas_savings_low = heating_low
-            electric_heating_high = 0
-            electric_heating_low = 0
-        else:
-            electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-            electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-            gas_savings_high = 0
-            gas_savings_low = 0
-        
-        # Calculate cooling savings
-        cooling_high = calculate_from_regression(row_high, cdd, is_heating=False)
-        cooling_low = calculate_from_regression(row_low, cdd, is_heating=False)
-        
-        # Interpolate
-        if heating_fuel == 'Natural Gas':
-            c31 = 0
-            c33 = interpolate_hours(operating_hours, gas_savings_high, gas_savings_low, q24, q25)
-        else:
-            c31 = interpolate_hours(operating_hours, electric_heating_high, electric_heating_low, q24, q25)
-            c33 = 0
-        
-        c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
-        
-        # Office cooling multiplier: CDD-based polynomial
-        if cooling_installed == "Yes":
-            w24 = 1.0
-        else:
-            building_size = config_high['size']
-            w24 = calculate_office_cooling_multiplier(cdd, building_size)
-        
-        # Calculate baseline EUI
-        baseline_row_high = find_baseline_eui_row(config_high)
-        baseline_row_low = find_baseline_eui_row(config_low)
-        
-        if baseline_row_high is None or baseline_row_low is None:
-            st.error("⚠️ Could not find baseline EUI coefficients for Office")
-            return None
-        
-        baseline_eui_high = calculate_from_regression(baseline_row_high, hdd, is_heating=True)
-        baseline_eui_low = calculate_from_regression(baseline_row_low, hdd, is_heating=True)
-        baseline_eui = interpolate_hours(operating_hours, baseline_eui_high, baseline_eui_low, q24, q25)
+    q24, q25 = calculate_q24_q25(operating_hours)
     
-    else:  # Hotel
-        occupancy_pct = inputs['occupancy_rate']
-        occupancy_val = OCCUPANCY_MAPPING[occupancy_pct]
-        
-        # For hotels, use 33% and 100% as endpoints
-        config_high = build_lookup_config(inputs, 100)
-        config_low = build_lookup_config(inputs, 33)
-        
-        row_high = find_regression_row(config_high)
-        row_low = find_regression_row(config_low)
-        
-        if row_high is None or row_low is None:
-            st.error(f"⚠️ Could not find regression coefficients for Hotel configuration")
-            return None
-        
-        # Calculate heating savings
-        if heating_fuel == 'Natural Gas':
-            heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-            heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-            gas_savings_high = heating_high
-            gas_savings_low = heating_low
-            electric_heating_high = 0
-            electric_heating_low = 0
-        else:
-            electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-            electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-            gas_savings_high = 0
-            gas_savings_low = 0
-        
-        # Calculate cooling savings
-        cooling_high = calculate_from_regression(row_high, cdd, is_heating=False)
-        cooling_low = calculate_from_regression(row_low, cdd, is_heating=False)
-        
-        # Interpolate based on occupancy
-        if heating_fuel == 'Natural Gas':
-            c31 = 0
-            c33 = interpolate_occupancy(occupancy_val, gas_savings_high, gas_savings_low)
-        else:
-            c31 = interpolate_occupancy(occupancy_val, electric_heating_high, electric_heating_low)
-            c33 = 0
-        
-        c32_base = interpolate_occupancy(occupancy_val, cooling_high, cooling_low)
-        
-        # Hotel cooling multiplier: Static value from CSV
-        if cooling_installed == "Yes":
-            w24 = 1.0
-        else:
-            # Get static cooling multiplier from regression data
-            cool_mult_high = row_high.get('cool_mult_no_cooling', 0)
-            cool_mult_low = row_low.get('cool_mult_no_cooling', 0)
-            
-            # Interpolate if values differ
-            if cool_mult_high != cool_mult_low:
-                w24 = interpolate_occupancy(occupancy_val, cool_mult_high, cool_mult_low)
-            else:
-                w24 = cool_mult_high if pd.notna(cool_mult_high) else 0
-        
-        # Calculate baseline EUI
-        baseline_row_high = find_baseline_eui_row(config_high)
-        baseline_row_low = find_baseline_eui_row(config_low)
-        
-        if baseline_row_high is None or baseline_row_low is None:
-            st.error("⚠️ Could not find baseline EUI coefficients for Hotel")
-            return None
-        
-        baseline_eui_high = calculate_from_regression(baseline_row_high, hdd, is_heating=True)
-        baseline_eui_low = calculate_from_regression(baseline_row_low, hdd, is_heating=True)
-        baseline_eui = interpolate_occupancy(occupancy_val, baseline_eui_high, baseline_eui_low)
+    config_high = build_lookup_config(inputs, q24)
+    config_low = build_lookup_config(inputs, q25)
     
-    # Common final calculations
+    row_high = find_regression_row(config_high)
+    row_low = find_regression_row(config_low)
+    
+    if row_high is None or row_low is None:
+        st.error(f"⚠️ Could not find regression coefficients for configuration")
+        return None
+    
+    if heating_fuel == 'Natural Gas':
+        heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
+        heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
+        gas_savings_high = heating_high
+        gas_savings_low = heating_low
+        electric_heating_high = 0
+        electric_heating_low = 0
+    else:
+        electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
+        electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
+        gas_savings_high = 0
+        gas_savings_low = 0
+    
+    cooling_high = calculate_from_regression(row_high, cdd, is_heating=False)
+    cooling_low = calculate_from_regression(row_low, cdd, is_heating=False)
+    
+    if heating_fuel == 'Natural Gas':
+        c31 = 0
+        c33 = interpolate_hours(operating_hours, gas_savings_high, gas_savings_low, q24, q25)
+    else:
+        c31 = interpolate_hours(operating_hours, electric_heating_high, electric_heating_low, q24, q25)
+        c33 = 0
+    
+    c32_base = interpolate_hours(operating_hours, cooling_high, cooling_low, q24, q25)
+    
+    # FIXED LOGIC: Calculate cooling multiplier using CDD-based polynomial
+    if cooling_installed == "Yes":
+        w24 = 1.0
+    else:
+        # Use CDD-based polynomial regression to calculate the cooling multiplier
+        # This matches Excel's 'Cool_adjust' calculation
+        building_size = config_high['size']  # 'Mid' or 'Large'
+        w24 = calculate_cooling_multiplier(cdd, building_size)
+    
     c32 = c32_base * w24
+    
+    baseline_row_high = find_baseline_eui_row(config_high)
+    baseline_row_low = find_baseline_eui_row(config_low)
+    
+    if baseline_row_high is None or baseline_row_low is None:
+        st.error("⚠️ Could not find baseline EUI coefficients")
+        return None
+    
+    baseline_eui_high = calculate_from_regression(baseline_row_high, hdd, is_heating=True)
+    baseline_eui_low = calculate_from_regression(baseline_row_low, hdd, is_heating=True)
+    baseline_eui = interpolate_hours(operating_hours, baseline_eui_high, baseline_eui_low, q24, q25)
     
     electric_savings_kwh = (c31 + c32) * csw_area
     gas_savings_therms = c33 * csw_area
@@ -486,6 +363,7 @@ def calculate_savings(inputs):
 # UI
 # ============================================================================
 
+# Header with logo and title - cleaner, more compact
 col_logo, col_title = st.columns([1, 6])
 with col_logo:
     if os.path.exists('logo.png'):
@@ -494,11 +372,11 @@ with col_logo:
         st.write("")
 with col_title:
     st.markdown("<h1 style='margin-bottom: 0;'>Winsert Savings Calculator</h1>", unsafe_allow_html=True)
-    if 'building_type' in st.session_state:
-        st.markdown(f"<p style='font-size: 1.2em; color: #666; margin-top: 0;'>{st.session_state.building_type} Buildings</p>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size: 1.2em; color: #666; margin-top: 0;'>Office Buildings</p>", unsafe_allow_html=True)
 
 st.markdown('---')
 
+# Check if data loaded
 if not WEATHER_DATA_BY_STATE:
     st.error("⚠️ Unable to load weather data.")
     st.stop()
@@ -507,31 +385,12 @@ if REGRESSION_COEFFICIENTS.empty:
     st.error("⚠️ Unable to load regression coefficients.")
     st.stop()
 
-total_steps = 5 if 'building_type' in st.session_state else 4
-
-progress = st.session_state.step / total_steps
+progress = st.session_state.step / 4
 st.progress(progress)
-st.write(f'Step {st.session_state.step} of {total_steps}')
+st.write(f'Step {st.session_state.step} of 4')
 
-# STEP 1: Building Type Selection
 if st.session_state.step == 1:
-    st.header('Step 1: Select Building Type')
-    
-    building_type = st.selectbox(
-        'What type of building are you analyzing?',
-        options=BUILDING_TYPES,
-        key='building_type_select'
-    )
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button('Next →', type='primary'):
-        st.session_state.building_type = building_type
-        st.session_state.step = 2
-        st.rerun()
-
-# STEP 2: Project Location
-elif st.session_state.step == 2:
-    st.header('Step 2: Project Location')
+    st.header('Step 1: Project Location')
     
     state_options = sorted(WEATHER_DATA_BY_STATE.keys())
     default_state_idx = 0
@@ -575,27 +434,20 @@ elif st.session_state.step == 2:
                 )
     
     st.markdown("<br>", unsafe_allow_html=True)
-    col_back, col_next = st.columns([1, 1])
-    with col_back:
-        if st.button('← Back'):
-            st.session_state.step = 1
+    if st.button('Next →', type='primary'):
+        if state and city:
+            st.session_state.step = 2
             st.rerun()
-    with col_next:
-        if st.button('Next →', type='primary'):
-            if state and city:
-                st.session_state.step = 3
-                st.rerun()
 
-# STEP 3: Building Envelope Information
-elif st.session_state.step == 3:
-    st.header('Step 3: Building Envelope Information')
+elif st.session_state.step == 2:
+    st.header('Step 2: Building Envelope Information')
     col1, col2 = st.columns(2)
     
     with col1:
-        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=1000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area_input')
+        building_area = st.number_input('Building Area (Sq.Ft.)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='building_area_input', help="Must be between 15,000 and 500,000 SF")
         st.session_state.building_area = building_area
         
-        num_floors = st.number_input('Number of Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='num_floors_input')
+        num_floors = st.number_input('Number of Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='num_floors_input', help="Must be between 1 and 100 floors")
         st.session_state.num_floors = num_floors
         
         window_types_list = WINDOW_TYPES
@@ -618,7 +470,7 @@ elif st.session_state.step == 3:
         csw_type = st.selectbox('Secondary Window Product', options=csw_types_list, index=csw_type_idx, key='csw_type_select')
         st.session_state.csw_type = csw_type
         
-        csw_area = st.number_input('Total Sq. Ft of Secondary Windows Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 10000), int(building_area * 0.5)), step=100, key='csw_area_input')
+        csw_area = st.number_input('Total Sq. Ft of Secondary Windows Installed', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='csw_area_input', help='Check window to wall ratio. Typical values are between 10%-50%.')
         st.session_state.csw_area = csw_area
         
         if csw_area > 0 and building_area > 0 and num_floors > 0:
@@ -631,6 +483,7 @@ elif st.session_state.step == 3:
                 unsafe_allow_html=True
             )
             
+            # WWR validation warnings
             if wwr > 1.0:
                 st.error("⚠️ WWR is larger than physically possible. Please update.")
                 st.session_state.wwr_error = True
@@ -646,18 +499,17 @@ elif st.session_state.step == 3:
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button('← Back'):
-            st.session_state.step = 2
+            st.session_state.step = 1
             st.rerun()
     with col_next:
+        # Disable next button if WWR > 100%
         can_proceed = not st.session_state.get('wwr_error', False)
         if st.button('Next →', type='primary', disabled=not can_proceed):
-            st.session_state.step = 4
+            st.session_state.step = 3
             st.rerun()
 
-# STEP 4: HVAC & Utility Information
-elif st.session_state.step == 4:
-    building_type = st.session_state.get('building_type', 'Office')
-    st.header('Step 4: HVAC & Utility Information')
+elif st.session_state.step == 3:
+    st.header('Step 3: HVAC & Utility Information')
     col1, col2 = st.columns(2)
     
     with col1:
@@ -667,30 +519,18 @@ elif st.session_state.step == 4:
         gas_rate = st.number_input('Natural Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='gas_rate_input')
         st.session_state.gas_rate = gas_rate
         
-        if building_type == 'Office':
-            operating_hours = st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours_input')
-            st.session_state.operating_hours = operating_hours
-        else:  # Hotel
-            occupancy_options = OCCUPANCY_RATES
-            occupancy_idx = 2  # Default to 100%
-            if 'occupancy_rate' in st.session_state and st.session_state.occupancy_rate in occupancy_options:
-                occupancy_idx = occupancy_options.index(st.session_state.occupancy_rate)
-            occupancy_rate = st.selectbox('Average Occupancy Rate', options=occupancy_options, index=occupancy_idx, key='occupancy_rate_select')
-            st.session_state.occupancy_rate = occupancy_rate
+        operating_hours = st.number_input('Annual Operating Hours', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='operating_hours_input', help="Must be between 1,980 and 8,760 hours")
+        st.session_state.operating_hours = operating_hours
     
     with col2:
-        if building_type == 'Office':
-            hvac_systems_list = OFFICE_HVAC_SYSTEMS
-        else:
-            hvac_systems_list = HOTEL_HVAC_SYSTEMS
-        
+        hvac_systems_list = HVAC_SYSTEMS
         hvac_idx = 0
         if 'hvac_system' in st.session_state and st.session_state.hvac_system in hvac_systems_list:
             hvac_idx = hvac_systems_list.index(st.session_state.hvac_system)
         hvac_system = st.selectbox('HVAC System Type', options=hvac_systems_list, index=hvac_idx, key='hvac_system_select')
         st.session_state.hvac_system = hvac_system
         
-        if building_type == 'Office' and hvac_system == 'Packaged VAV with electric reheat':
+        if hvac_system == 'Packaged VAV with electric reheat':
             heating_fuels_list = ['Electric']
             fuel_idx = 0
         else:
@@ -699,8 +539,7 @@ elif st.session_state.step == 4:
             if 'heating_fuel' in st.session_state and st.session_state.heating_fuel in heating_fuels_list:
                 fuel_idx = heating_fuels_list.index(st.session_state.heating_fuel)
         
-        fuel_label = 'Heating Fuel' if building_type == 'Office' else 'Dominant Heating Fuel'
-        heating_fuel = st.selectbox(fuel_label, options=heating_fuels_list, index=fuel_idx, key='heating_fuel_select')
+        heating_fuel = st.selectbox('Heating Fuel', options=heating_fuels_list, index=fuel_idx, key='heating_fuel_select')
         st.session_state.heating_fuel = heating_fuel
         
         cooling_options_list = COOLING_OPTIONS
@@ -714,40 +553,33 @@ elif st.session_state.step == 4:
     col_back, col_next = st.columns([1, 1])
     with col_back:
         if st.button('← Back'):
-            st.session_state.step = 3
+            st.session_state.step = 2
             st.rerun()
     with col_next:
         if st.button('Calculate Savings →', type='primary'):
-            st.session_state.step = 5
+            st.session_state.step = 4
             st.rerun()
 
-# STEP 5: Results
-elif st.session_state.step == 5:
-    building_type = st.session_state.get('building_type', 'Office')
+elif st.session_state.step == 4:
     st.header('💡 Your Energy Savings Results')
     
     inputs = {
-        'building_type': building_type,
         'state': st.session_state.get('state'),
         'city': st.session_state.get('city'),
         'hdd': st.session_state.get('hdd', 0),
         'cdd': st.session_state.get('cdd', 0),
         'building_area': st.session_state.get('building_area', 75000),
         'num_floors': st.session_state.get('num_floors', 5),
-        'hvac_system': st.session_state.get('hvac_system'),
+        'operating_hours': st.session_state.get('operating_hours', 8000),
+        'hvac_system': st.session_state.get('hvac_system', HVAC_SYSTEMS[0]),
         'heating_fuel': st.session_state.get('heating_fuel', 'Electric'),
         'cooling_installed': st.session_state.get('cooling_installed', 'Yes'),
         'existing_window': st.session_state.get('existing_window', 'Single pane'),
         'csw_type': st.session_state.get('csw_type', 'Winsert Lite'),
-        'csw_area': st.session_state.get('csw_area', 10000),
+        'csw_area': st.session_state.get('csw_area', 12000),
         'electric_rate': st.session_state.get('electric_rate', 0.12),
         'gas_rate': st.session_state.get('gas_rate', 0.80)
     }
-    
-    if building_type == 'Office':
-        inputs['operating_hours'] = st.session_state.get('operating_hours', 8000)
-    else:  # Hotel
-        inputs['occupancy_rate'] = st.session_state.get('occupancy_rate', '100%')
     
     results = calculate_savings(inputs)
     
@@ -927,21 +759,87 @@ elif st.session_state.step == 5:
             st.session_state.step = 1
             st.rerun()
 
-# Sidebar
 with st.sidebar:
-    st.markdown('### 📝 Summary')
-    if st.session_state.step > 1 and 'building_type' in st.session_state:
-        st.markdown(f"**Building Type:** {st.session_state.get('building_type', 'N/A')}")
-    if st.session_state.step > 2:
-        st.markdown(f"**Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
-    if st.session_state.step > 3:
-        st.markdown(f"**Building:** {st.session_state.get('building_area', 0):,} SF, {st.session_state.get('num_floors', 0)} floors")
-        st.markdown(f"**Windows:** {st.session_state.get('existing_window', 'N/A')} → {st.session_state.get('csw_type', 'N/A')}")
-        st.markdown(f"**Secondary Window Area:** {st.session_state.get('csw_area', 0):,} SF")
-    if st.session_state.step > 4:
-        st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
-        st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
-        if st.session_state.get('building_type') == 'Office':
+    if st.session_state.step == 4:
+        st.markdown('### 🎛️ Adjust Inputs')
+        st.markdown('Modify values below to see updated results:')
+        st.markdown('---')
+        
+        st.markdown(f"**📍 Location**")
+        st.text(f"{st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
+        st.markdown('---')
+        
+        st.markdown('**🏢 Building Envelope**')
+        building_area = st.number_input('Building Area (SF)', min_value=15000, max_value=500000, value=st.session_state.get('building_area', 75000), step=1000, key='sidebar_building_area')
+        if building_area != st.session_state.get('building_area'):
+            st.session_state.building_area = building_area
+            st.rerun()
+        
+        num_floors = st.number_input('Floors', min_value=1, max_value=100, value=st.session_state.get('num_floors', 5), key='sidebar_num_floors')
+        if num_floors != st.session_state.get('num_floors'):
+            st.session_state.num_floors = num_floors
+            st.rerun()
+        
+        existing_window = st.selectbox('Existing Window', options=WINDOW_TYPES, index=WINDOW_TYPES.index(st.session_state.get('existing_window', 'Single pane')), key='sidebar_existing_window')
+        if existing_window != st.session_state.get('existing_window'):
+            st.session_state.existing_window = existing_window
+            st.rerun()
+        
+        csw_type = st.selectbox('Product', options=CSW_TYPES, index=CSW_TYPES.index(st.session_state.get('csw_type', 'Winsert Lite')), key='sidebar_csw_type')
+        if csw_type != st.session_state.get('csw_type'):
+            st.session_state.csw_type = csw_type
+            st.rerun()
+        
+        csw_area = st.number_input('Secondary Window Area (SF)', min_value=0, max_value=int(building_area * 0.5), value=min(st.session_state.get('csw_area', 12000), int(building_area * 0.5)), step=100, key='sidebar_csw_area')
+        if csw_area != st.session_state.get('csw_area'):
+            st.session_state.csw_area = csw_area
+            st.rerun()
+        
+        if csw_area > 0 and building_area > 0 and num_floors > 0:
+            wwr = calculate_wwr(csw_area, building_area, num_floors)
+            st.text(f"WWR: {wwr:.0%}")
+        
+        st.markdown('---')
+        
+        st.markdown('**⚙️ HVAC & Utility**')
+        operating_hours = st.number_input('Operating Hours/yr', min_value=1980, max_value=8760, value=st.session_state.get('operating_hours', 8000), step=100, key='sidebar_operating_hours')
+        if operating_hours != st.session_state.get('operating_hours'):
+            st.session_state.operating_hours = operating_hours
+            st.rerun()
+        
+        hvac_system = st.selectbox('HVAC System', options=HVAC_SYSTEMS, index=HVAC_SYSTEMS.index(st.session_state.get('hvac_system', HVAC_SYSTEMS[0])), key='sidebar_hvac_system')
+        if hvac_system != st.session_state.get('hvac_system'):
+            st.session_state.hvac_system = hvac_system
+            st.rerun()
+        
+        heating_fuel = st.selectbox('Heating Fuel', options=HEATING_FUELS, index=HEATING_FUELS.index(st.session_state.get('heating_fuel', 'Electric')), key='sidebar_heating_fuel')
+        if heating_fuel != st.session_state.get('heating_fuel'):
+            st.session_state.heating_fuel = heating_fuel
+            st.rerun()
+        
+        cooling_installed = st.selectbox('Cooling?', options=COOLING_OPTIONS, index=COOLING_OPTIONS.index(st.session_state.get('cooling_installed', 'Yes')), key='sidebar_cooling_installed')
+        if cooling_installed != st.session_state.get('cooling_installed'):
+            st.session_state.cooling_installed = cooling_installed
+            st.rerun()
+        
+        electric_rate = st.number_input('Electric Rate ($/kWh)', min_value=0.01, max_value=1.0, value=st.session_state.get('electric_rate', 0.12), step=0.01, format='%.3f', key='sidebar_electric_rate')
+        if electric_rate != st.session_state.get('electric_rate'):
+            st.session_state.electric_rate = electric_rate
+            st.rerun()
+        
+        gas_rate = st.number_input('Gas Rate ($/therm)', min_value=0.01, max_value=10.0, value=st.session_state.get('gas_rate', 0.80), step=0.05, format='%.2f', key='sidebar_gas_rate')
+        if gas_rate != st.session_state.get('gas_rate'):
+            st.session_state.gas_rate = gas_rate
+            st.rerun()
+    else:
+        st.markdown('### 📝 Summary')
+        if st.session_state.step > 1:
+            st.markdown(f"**Location:** {st.session_state.get('city', 'N/A')}, {st.session_state.get('state', 'N/A')}")
+        if st.session_state.step > 2:
+            st.markdown(f"**Building:** {st.session_state.get('building_area', 0):,} SF, {st.session_state.get('num_floors', 0)} floors")
+            st.markdown(f"**Windows:** {st.session_state.get('existing_window', 'N/A')} → {st.session_state.get('csw_type', 'N/A')}")
+            st.markdown(f"**Secondary Window Area:** {st.session_state.get('csw_area', 0):,} SF")
+        if st.session_state.step > 3:
+            st.markdown(f"**HVAC:** {st.session_state.get('hvac_system', 'N/A')}")
+            st.markdown(f"**Heating:** {st.session_state.get('heating_fuel', 'N/A')}")
             st.markdown(f"**Operating Hours:** {st.session_state.get('operating_hours', 0):,}/yr")
-        else:
-            st.markdown(f"**Occupancy Rate:** {st.session_state.get('occupancy_rate', 'N/A')}")
