@@ -87,7 +87,8 @@ def load_weather_data():
 def load_regression_coefficients():
     """Load merged regression coefficients from CSV (Office + Hotel)"""
     try:
-        df = pd.read_csv('regression_coefficients.csv')
+        # CRITICAL: keep_default_na=False prevents pandas from converting 'N/A' string to NaN
+        df = pd.read_csv('regression_coefficients.csv', keep_default_na=False, na_values=[''])
         return df
     except FileNotFoundError:
         st.error("⚠️ Regression coefficients file not found")
