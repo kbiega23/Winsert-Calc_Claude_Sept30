@@ -2,7 +2,6 @@
 CSW Savings Calculator - Streamlit Web App
 MULTI-BUILDING VERSION - Supports Office and Hotel buildings
 Uses merged regression_coefficients.csv with both building types
-DEBUG VERSION - Shows Hotel baseline EUI lookup details
 """
 
 import streamlit as st
@@ -35,12 +34,11 @@ OFFICE_HVAC_SYSTEMS = [
     'Other'
 ]
 
-# Hotel HVAC Systems
+# Hotel HVAC Systems (CORRECTED - removed Central Ducted VAV)
 HOTEL_HVAC_SYSTEMS = [
     'PTAC',
     'PTHP',
     'Fan Coil Unit',
-    'Central Ducted VAV',
     'Other'
 ]
 
@@ -154,7 +152,7 @@ def build_lookup_config_hotel(inputs, occupancy_level):
     hvac_system = inputs['hvac_system']
     size = 'Small' if hvac_system in ['PTAC', 'PTHP'] else 'Large'
     
-    hvac_mapping = {'PTAC': 'PTAC', 'PTHP': 'PTHP', 'Fan Coil Unit': '', 'Central Ducted VAV': '', 'Other': ''}
+    hvac_mapping = {'PTAC': 'PTAC', 'PTHP': 'PTHP', 'Fan Coil Unit': '', 'Other': ''}
     hvac_fuel = hvac_mapping.get(hvac_system, '')
     
     heating_fuel = inputs['heating_fuel']
@@ -245,16 +243,18 @@ def find_baseline_eui_row(config, building_type):
             result = REGRESSION_COEFFICIENTS[mask]
     
     else:  # Hotel
-        # Hotel baseline: csw='N/A', hours is NaN or empty, occupancy must match
+        # CRITICAL FIX: For Hotel baseline rows, the heating fuel type is stored in hvac_fuel column
+        # Gas heating → look for hvac_fuel='Gas', Electric heating → look for hvac_fuel='Electric'
+        baseline_hvac_fuel = 'Gas' if config['fuel'] == 'Gas' else 'Electric'
+        
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
             (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
             (REGRESSION_COEFFICIENTS['size'] == config['size']) &
+            (REGRESSION_COEFFICIENTS['hvac_fuel'] == baseline_hvac_fuel) &
             (REGRESSION_COEFFICIENTS['occupancy'] == config['occupancy']) &
             ((REGRESSION_COEFFICIENTS['hours'] == '') | (REGRESSION_COEFFICIENTS['hours'].isna()))
         )
-        if config['hvac_fuel']:
-            mask = mask & (REGRESSION_COEFFICIENTS['hvac_fuel'] == config['hvac_fuel'])
         
         result = REGRESSION_COEFFICIENTS[mask]
     
@@ -441,51 +441,13 @@ def calculate_savings_hotel(inputs):
     baseline_row_high = find_baseline_eui_row(config_high, 'Hotel')
     baseline_row_low = find_baseline_eui_row(config_low, 'Hotel')
     
-    # ===== DEBUG OUTPUT =====
-    st.write("### DEBUG INFO - Baseline EUI Lookup")
-    st.write(f"**Config High:** {config_high}")
-    st.write(f"**Config Low:** {config_low}")
-    
-    if baseline_row_high is not None:
-        st.write(f"**Baseline Row High Found:**")
-        st.write(f"  - Row index: {baseline_row_high.name if hasattr(baseline_row_high, 'name') else 'N/A'}")
-        st.write(f"  - heat_a: {baseline_row_high['heat_a']}")
-        st.write(f"  - heat_b: {baseline_row_high['heat_b']}")
-        st.write(f"  - heat_c: {baseline_row_high['heat_c']}")
-    else:
-        st.error("**Baseline Row High: NOT FOUND**")
-    
-    if baseline_row_low is not None:
-        st.write(f"**Baseline Row Low Found:**")
-        st.write(f"  - Row index: {baseline_row_low.name if hasattr(baseline_row_low, 'name') else 'N/A'}")
-        st.write(f"  - heat_a: {baseline_row_low['heat_a']}")
-        st.write(f"  - heat_b: {baseline_row_low['heat_b']}")
-        st.write(f"  - heat_c: {baseline_row_low['heat_c']}")
-    else:
-        st.error("**Baseline Row Low: NOT FOUND**")
-    
-    st.write(f"**HDD:** {hdd}")
-    st.write(f"**Occupancy %:** {occupancy_percent}")
-    # ===== END DEBUG OUTPUT =====
-    
     if baseline_row_high is None or baseline_row_low is None:
         st.error("⚠️ Could not find Hotel baseline EUI coefficients")
         return None
     
     baseline_eui_high = calculate_from_regression(baseline_row_high, hdd, is_heating=True)
     baseline_eui_low = calculate_from_regression(baseline_row_low, hdd, is_heating=True)
-    
-    # ===== MORE DEBUG OUTPUT =====
-    st.write(f"**Baseline EUI High (calculated):** {baseline_eui_high:.2f}")
-    st.write(f"**Baseline EUI Low (calculated):** {baseline_eui_low:.2f}")
-    # ===== END DEBUG OUTPUT =====
-    
     baseline_eui = interpolate_values(occupancy_percent, baseline_eui_high, baseline_eui_low, occupancy_high, occupancy_low)
-    
-    # ===== FINAL DEBUG OUTPUT =====
-    st.write(f"**Baseline EUI (interpolated):** {baseline_eui:.2f}")
-    st.write("---")
-    # ===== END DEBUG OUTPUT =====
     
     # Calculate final savings
     electric_savings_kwh = (c31 + c32) * csw_area
