@@ -1,13 +1,4 @@
-# Calculate heating savings
-    if heating_fuel == 'Natural Gas':
-        heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-        heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-        gas_savings_high, gas_savings_low = heating_high, heating_low
-        electric_heating_high, electric_heating_low = 0, 0
-    else:
-        electric_heating_high = calculate_from_regression(row_high, hdd, is_heating=True)
-        electric_heating_low = calculate_from_regression(row_low, hdd, is_heating=True)
-        gas_savings_high, gas_savings_low = 0, 0"""
+"""
 CSW Savings Calculator - Streamlit Web App
 MULTI-BUILDING VERSION - Supports Office and Hotel buildings
 Uses merged regression_coefficients.csv with both building types
@@ -43,7 +34,7 @@ OFFICE_HVAC_SYSTEMS = [
     'Other'
 ]
 
-# Hotel HVAC Systems (CORRECTED - removed Central Ducted VAV)
+# Hotel HVAC Systems
 HOTEL_HVAC_SYSTEMS = [
     'PTAC',
     'PTHP',
@@ -154,7 +145,7 @@ def build_lookup_config_office(inputs, hours):
     }
 
 def build_lookup_config_hotel(inputs, occupancy_level):
-    """Build configuration for finding Hotel regression row"""
+    """Build configuration for finding Hotel CSW regression row"""
     base = 'Single' if inputs['existing_window'] == 'Single pane' else 'Double'
     csw_type = CSW_TYPE_MAPPING.get(inputs['csw_type'], inputs['csw_type'])
     
@@ -187,13 +178,10 @@ def build_baseline_config_hotel(inputs, occupancy_level):
     hvac_system = inputs['hvac_system']
     heating_fuel = inputs['heating_fuel']
     
-    # CRITICAL: For baseline, size depends on heating fuel for PTAC/PTHP systems
-    # If PTAC/PTHP with Natural Gas → use Large hotel baseline (separate gas heating system)
-    # If PTAC/PTHP with Electric/None → use Small hotel baseline (all-electric PTAC/PTHP)
-    if hvac_system in ['PTAC', 'PTHP'] and heating_fuel == 'Natural Gas':
-        size = 'Large'
-        hvac_fuel_baseline = 'Gas'
-    elif hvac_system == 'PTAC':
+    # Determine size and hvac_fuel for baseline lookup
+    # Small hotel (PTAC/PTHP with Electric/None) uses PTAC/PTHP baseline
+    # Large hotel uses Gas or Electric baseline based on heating fuel
+    if hvac_system == 'PTAC':
         size = 'Small'
         hvac_fuel_baseline = 'PTAC'
     elif hvac_system == 'PTHP':
@@ -213,7 +201,7 @@ def build_baseline_config_hotel(inputs, occupancy_level):
     }
 
 def find_regression_row(config, building_type):
-    """Find matching regression row"""
+    """Find matching regression row for CSW savings"""
     if REGRESSION_COEFFICIENTS.empty:
         return None
     
