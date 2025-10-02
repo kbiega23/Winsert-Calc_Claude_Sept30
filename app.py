@@ -243,9 +243,15 @@ def find_baseline_eui_row(config, building_type):
             result = REGRESSION_COEFFICIENTS[mask]
     
     else:  # Hotel
-        # CRITICAL FIX: For Hotel baseline rows, the heating fuel type is stored in hvac_fuel column
-        # Gas heating → look for hvac_fuel='Gas', Electric heating → look for hvac_fuel='Electric'
-        baseline_hvac_fuel = 'Gas' if config['fuel'] == 'Gas' else 'Electric'
+        # CRITICAL FIX: For Hotel baseline rows, hvac_fuel column varies by hotel size
+        # Small hotels (PTAC/PTHP): use the HVAC system type itself ('PTAC' or 'PTHP')
+        # Large hotels: use heating fuel type ('Gas' or 'Electric')
+        if config['hvac_fuel'] in ['PTAC', 'PTHP']:
+            # Small hotel - use HVAC system type
+            baseline_hvac_fuel = config['hvac_fuel']
+        else:
+            # Large hotel - use heating fuel type
+            baseline_hvac_fuel = 'Gas' if config['fuel'] == 'Gas' else 'Electric'
         
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
