@@ -218,10 +218,6 @@ def find_baseline_eui_row(config, building_type):
     if building_type == 'Office':
         fuel_type = 'Gas' if config['fuel'] == 'Natural Gas' else 'Electric'
         
-        st.write("DEBUG BASELINE - Looking for:")
-        st.write(f"  base={config['base']}, csw='N/A', size={config['size']}")
-        st.write(f"  hvac_fuel={fuel_type}, hours={config['hours']}, occupancy=NaN/empty")
-        
         # Office baseline: csw='N/A', occupancy is NaN or empty, hours must match
         mask = (
             (REGRESSION_COEFFICIENTS['base'] == config['base']) &
@@ -233,11 +229,9 @@ def find_baseline_eui_row(config, building_type):
         )
         
         result = REGRESSION_COEFFICIENTS[mask]
-        st.write(f"DEBUG BASELINE - Found {len(result)} rows with exact match")
         
         # If no exact match, try with N/A fuel
         if result.empty:
-            st.write("DEBUG BASELINE - Trying with fuel='N/A'")
             mask = (
                 (REGRESSION_COEFFICIENTS['base'] == config['base']) &
                 (REGRESSION_COEFFICIENTS['csw'] == 'N/A') &
@@ -248,17 +242,6 @@ def find_baseline_eui_row(config, building_type):
                 ((REGRESSION_COEFFICIENTS['occupancy'] == '') | (REGRESSION_COEFFICIENTS['occupancy'].isna()))
             )
             result = REGRESSION_COEFFICIENTS[mask]
-            st.write(f"DEBUG BASELINE - Found {len(result)} rows with N/A fuel")
-        
-        if len(result) > 0:
-            st.write("First baseline match:", result.iloc[0].to_dict())
-        else:
-            # Show what baseline rows exist for debugging
-            st.write("DEBUG - Available baseline rows:")
-            baseline_rows = REGRESSION_COEFFICIENTS[REGRESSION_COEFFICIENTS['csw'] == 'N/A']
-            st.write(f"Total baseline rows: {len(baseline_rows)}")
-            st.write("Sample baseline rows:")
-            st.dataframe(baseline_rows[['row', 'base', 'csw', 'size', 'hvac_fuel', 'fuel', 'hours']].head(10))
     
     else:  # Hotel
         # Hotel baseline: csw='N/A', hours is NaN or empty, occupancy must match
